@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { 
   doc, getDoc, setDoc, updateDoc, onSnapshot, 
-  query, collection, where, getDocs, increment // 🟢 IMPORTED INCREMENT
+  query, collection, where, getDocs, increment
 } from 'firebase/firestore'; 
 import { auth, db } from '../lib/firebase';
 import type { User, SubscriptionPlan, UserUsage } from '../types'; 
@@ -42,7 +42,6 @@ interface AuthState {
   
   login: (email: string, password: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>; 
-  // 🟢 UPDATED: Added optional appliedReferralCode parameter
   register: (name: string, email: string, password: string, appliedReferralCode?: string) => Promise<boolean>;
   
   logout: () => Promise<void>;
@@ -135,7 +134,6 @@ export const useAuthStore = create<AuthState>()(
         try {
           const userCredential = await signInWithEmailAndPassword(auth, email, password);
           
-          // 🟢 Enforce Email Verification
           if (!userCredential.user.emailVerified) {
             await signOut(auth);
             set({ error: "Please verify your email address first. Check your inbox!" });
@@ -201,7 +199,6 @@ export const useAuthStore = create<AuthState>()(
               await updateDoc(userRef, updatePayload);
             }
           } else {
-            // 🟢 Give Google users a referral code too!
             const myCode = Math.random().toString(36).substring(2, 8).toUpperCase();
             userData = {
               id: firebaseUser.uid,
@@ -213,8 +210,9 @@ export const useAuthStore = create<AuthState>()(
               isActive: true,
               createdAt: new Date().toISOString(),
               usage: INITIAL_USAGE, 
-              referralCode: myCode // 🟢 ADDED HERE
-            } as User;
+              referralCode: myCode,
+              hasActiveDiscount: false 
+            } as any;
             await setDoc(userRef, userData);
           }
 
@@ -231,53 +229,31 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // 🟢 UPDATED REGISTER: Referral Logic
+      // 🟢 UPDATED REGISTER: Tagging the Referral (No free premium yet!)
       register: async (name, email, password, appliedReferralCode?: string) => {
         set({ error: null });
         try {
-          // 1. CREATE ACCOUNT
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-          
-          // 2. SEND OTP/VERIFICATION LINK
           await sendEmailVerification(userCredential.user);
 
-          // 3. GENERATE UNIQUE REFERRAL CODE
           const myCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-          let startingSubscription = 'free';
-
-          // 4. CHECK REFERRAL SYSTEM
-          if (appliedReferralCode) {
-             const q = query(collection(db, 'users'), where('referralCode', '==', appliedReferralCode.trim().toUpperCase()));
-             const snapshot = await getDocs(q);
-             
-             if (!snapshot.empty) {
-                 const referrerDoc = snapshot.docs[0];
-                 // Reward the Referrer! (Upgrade to premium and track count)
-                 await updateDoc(doc(db, 'users', referrerDoc.id), {
-                     'usage.referredCount': increment(1),
-                     'subscription': 'premium' 
-                 });
-                 // Reward the New User!
-                 startingSubscription = 'premium';
-             }
-          }
+          const cleanReferralCode = appliedReferralCode ? appliedReferralCode.trim().toUpperCase() : null;
 
           const newUser: any = {
             id: userCredential.user.uid,
             email: email.toLowerCase(),
             name,
             role: 'client',
-            subscription: startingSubscription,
+            subscription: 'free', // 🟢 Everyone starts on free
             isActive: true,
             createdAt: new Date().toISOString(),
             usage: INITIAL_USAGE, 
-            referralCode: myCode // 🟢 Save their unique code
+            referralCode: myCode,
+            referredBy: cleanReferralCode, // 🟢 Save who referred them
+            hasActiveDiscount: false // Flag for when THEY refer someone
           };
 
-          // 5. SAVE TO DATABASE
           await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
-          
-          // 6. FORCE THEM TO LOGOUT AND VERIFY
           await signOut(auth);
           set({ user: null, isAuthenticated: false, isAdmin: false });
 
@@ -293,7 +269,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // --- UPDATE USER: Handle Profile Page Edits ---
+      // --- UPDATE USER ---
       updateUser: async (data: Partial<User>) => {
         const currentUser = get().user;
         if (!currentUser) return false;
@@ -332,19 +308,41 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
+      // 🟢 UPDATED SUBSCRIPTION: The Reward Trigger
       setSubscription: async (plan: SubscriptionPlan) => {
         const currentUser = get().user;
         if (currentUser) {
           try {
+            // 1. Upgrade the current paying user
             await updateDoc(doc(db, 'users', currentUser.id), { subscription: plan }); 
             set({ user: { ...currentUser, subscription: plan } });
+
+            // 2. CHECK FOR REFERRAL REWARD
+            // If they bought a paid plan AND they were referred by someone
+            if ((plan === 'premium' || plan === 'premium_plus') && (currentUser as any).referredBy) {
+              
+               // Find the generous blockmate who referred them
+               const q = query(collection(db, 'users'), where('referralCode', '==', (currentUser as any).referredBy));
+               const snapshot = await getDocs(q);
+               
+               if (!snapshot.empty) {
+                   const referrerDoc = snapshot.docs[0];
+                   
+                   // 🟢 Grant the Referrer the 25% Discount Flag!
+                   await updateDoc(doc(db, 'users', referrerDoc.id), {
+                       'usage.successfulReferrals': increment(1),
+                       'hasActiveDiscount': true 
+                   });
+               }
+            }
+
           } catch (error) {
             console.error("Subscription Update Failed:", error);
           }
         }
       },
 
-      // --- USAGE TRACKER: Charge the User's Ledger ---
+      // --- USAGE TRACKER ---
       incrementUsage: async (type) => {
         const currentUser = get().user;
         

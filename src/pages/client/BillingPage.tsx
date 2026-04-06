@@ -14,7 +14,8 @@ import {
   Copy,
   Check,
   Send,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 
 const BillingPage: React.FC = () => {
@@ -23,6 +24,11 @@ const BillingPage: React.FC = () => {
   const isFree = subscription === 'free';
   const isPremium = subscription === 'premium';
   const isPremiumPlus = subscription === 'premium_plus';
+
+  // 🟢 REFERRAL DISCOUNT LOGIC
+  const hasDiscount = (user as any)?.hasActiveDiscount || false;
+  const premiumPrice = hasDiscount ? '126.75' : '169.00';
+  const premiumPlusPrice = hasDiscount ? '374.25' : '499.00';
 
   // 🟢 DYNAMIC REAL-TIME DATES
   const today = new Date();
@@ -36,6 +42,7 @@ const BillingPage: React.FC = () => {
   // 🟢 PAYMENT MODAL STATES
   const [paymentModalData, setPaymentModalData] = useState<{ isOpen: boolean, plan: 'premium' | 'premium_plus' | null }>({ isOpen: false, plan: null });
   const [copied, setCopied] = useState(false);
+  const [referralCopied, setReferralCopied] = useState(false); // For the referral code
 
   // 🟢 PROMO PRICING REFLECTED IN HISTORY
   const billingHistory = isPremiumPlus 
@@ -52,9 +59,19 @@ const BillingPage: React.FC = () => {
   };
 
   const handleSendEmail = () => {
+    const expectedAmount = paymentModalData.plan === 'premium' ? premiumPrice : premiumPlusPrice;
     const subject = encodeURIComponent(`Lex Casus Upgrade - Proof of Payment (${paymentModalData.plan?.toUpperCase()})`);
-    const body = encodeURIComponent(`Atty.,\n\nI have successfully scanned and paid via GCash for the ${paymentModalData.plan?.replace('_', ' ').toUpperCase()} tier.\n\nAttached is my Proof of Payment.\n\nMy Lex Casus Account Email: ${user?.email}\n\nThank you.`);
+    const body = encodeURIComponent(`Atty.,\n\nI have successfully scanned and paid ₱${expectedAmount} via GCash for the ${paymentModalData.plan?.replace('_', ' ').toUpperCase()} tier.\n\nAttached is my Proof of Payment.\n\nMy Lex Casus Account Email: ${user?.email}\nDiscount Active: ${hasDiscount ? 'YES' : 'NO'}\n\nThank you.`);
     window.location.href = `mailto:lexcasus@gmail.com?subject=${subject}&body=${body}`;
+  };
+
+  // 🟢 REFERRAL COPY HANDLER
+  const handleCopyReferral = () => {
+    if ((user as any)?.referralCode) {
+      navigator.clipboard.writeText((user as any).referralCode);
+      setReferralCopied(true);
+      setTimeout(() => setReferralCopied(false), 2000);
+    }
   };
 
   return (
@@ -99,15 +116,23 @@ const BillingPage: React.FC = () => {
                   </div>
                   <p className="text-xs font-bold text-blue-900 dark:text-blue-400 uppercase tracking-widest opacity-70">Scan to Pay</p>
                   
-                  {/* 🟢 MODAL PROMO PRICING */}
+                  {/* 🟢 MODAL PROMO PRICING (Factoring in Discount) */}
                   <div className="flex items-center gap-2 mt-1">
                     <p className="text-sm text-blue-400/80 line-through decoration-blue-500/50 font-semibold">
                       {paymentModalData.plan === 'premium' ? '₱199' : '₱599'}
                     </p>
                     <p className="text-3xl font-black text-blue-600 dark:text-blue-500">
-                      {paymentModalData.plan === 'premium' ? '₱169.00' : '₱499.00'}
+                      ₱{paymentModalData.plan === 'premium' ? premiumPrice : premiumPlusPrice}
                     </p>
                   </div>
+                  
+                  {hasDiscount && (
+                    <div className="mt-1">
+                      <span className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">
+                        25% Referral Applied
+                      </span>
+                    </div>
+                  )}
 
                   <div className="mt-2 py-1 px-3 bg-blue-500/10 rounded-full">
                     <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tighter">
@@ -171,6 +196,55 @@ const BillingPage: React.FC = () => {
             Manage your Lex Casus tier and view your payment history
           </p>
         </div>
+
+        {/* 🟢 THE REFERRAL CARD (Added Here!) */}
+        <div className="p-6 bg-gradient-to-br from-navy-900 to-[#0A0F1D] rounded-3xl border border-navy-700 text-white shadow-2xl relative overflow-hidden group">
+          <div className="absolute -right-6 -bottom-6 opacity-10 group-hover:scale-110 transition-transform duration-700">
+            <Users size={180} />
+          </div>
+          
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-500/10 border border-gold-500/20 text-gold-500 text-[10px] font-black uppercase tracking-widest mb-4">
+              <Sparkles size={12} /> Viral Growth Engine
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-1">Refer a Blockmate</h3>
+            <p className="text-sm text-gray-400 mb-6 max-w-[280px]">
+              Share your code. When they subscribe to Premium, you get <span className="text-gold-400 font-bold text-lg">25% OFF</span> your next month!
+            </p>
+            
+            <div className="flex items-center gap-3">
+              <div className="bg-black/40 border border-white/10 px-6 py-3 rounded-2xl font-black tracking-[0.3em] text-2xl text-gold-500 shadow-inner">
+                {(user as any)?.referralCode || 'N/A'}
+              </div>
+              <button 
+                onClick={handleCopyReferral}
+                className="p-4 bg-gold-500 hover:bg-gold-400 text-navy-950 rounded-2xl transition-all active:scale-95 shadow-lg shadow-gold-500/20 flex items-center justify-center"
+              >
+                {referralCopied ? <CheckCircle2 size={24} /> : <Copy size={24} />}
+              </button>
+            </div>
+            
+            {((user as any)?.usage?.successfulReferrals > 0) && (
+              <p className="mt-4 text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <Check size={12} /> {(user as any).usage.successfulReferrals} Successful Referrals!
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* 🟢 REFERRAL SUCCESS BANNER */}
+        {hasDiscount && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 p-4 rounded-xl flex items-center gap-4">
+            <div className="bg-emerald-500/20 p-2 rounded-lg">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="font-bold text-sm">25% Referral Discount Unlocked!</p>
+              <p className="text-xs mt-0.5">A friend used your code to join Lex Casus! Enjoy 25% off your next upgrade.</p>
+            </div>
+          </div>
+        )}
 
         {/* Current Plan Card */}
         <div className={cn(
@@ -255,16 +329,24 @@ const BillingPage: React.FC = () => {
                 </div>
                 <h4 className="font-semibold text-gray-900 dark:text-white">Premium</h4>
               </div>
-              {/* 🟢 NEW BADGE */}
               <span className="badge bg-gold-500 text-navy-900 border-none font-bold text-[10px] uppercase tracking-widest shadow-sm">Most Availed</span>
             </div>
             
-            {/* 🟢 PROMO PRICING */}
-            <div className="mb-6 flex items-end gap-2">
-              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">₱199</span>
-              <span className="text-4xl font-black text-gold-600 dark:text-gold-400 leading-none">₱169</span>
+            {/* 🟢 PROMO & DISCOUNT PRICING */}
+            <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
+              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
+                {hasDiscount ? '₱169' : '₱199'}
+              </span>
+              <span className="text-4xl font-black text-gold-600 dark:text-gold-400 leading-none">
+                ₱{premiumPrice}
+              </span>
               <span className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">/ mo</span>
             </div>
+            {hasDiscount && (
+              <div className="mb-6">
+                 <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">25% Discount Applied!</span>
+              </div>
+            )}
 
             <div className="space-y-4 mb-8 flex-1">
               <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-medium"><strong>Unlimited</strong> AI Chat</span></div>
@@ -296,12 +378,21 @@ const BillingPage: React.FC = () => {
               </div>
             </div>
 
-            {/* 🟢 PROMO PRICING */}
-            <div className="mb-6 flex items-end gap-2">
-              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">₱599</span>
-              <span className="text-4xl font-black text-purple-600 dark:text-purple-400 leading-none">₱499</span>
+            {/* 🟢 PROMO & DISCOUNT PRICING */}
+            <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
+              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
+                {hasDiscount ? '₱499' : '₱599'}
+              </span>
+              <span className="text-4xl font-black text-purple-600 dark:text-purple-400 leading-none">
+                ₱{premiumPlusPrice}
+              </span>
               <span className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">/ mo</span>
             </div>
+            {hasDiscount && (
+              <div className="mb-6">
+                 <span className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">25% Discount Applied!</span>
+              </div>
+            )}
 
             <div className="space-y-4 mb-8 flex-1">
               <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-purple-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-bold">Unlimited Everything</span></div>
