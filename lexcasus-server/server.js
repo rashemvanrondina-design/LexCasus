@@ -135,24 +135,28 @@ app.post('/api/search', async (req, res) => {
 // ============================================================
 
 app.post('/api/digest', async (req, res) => {
-  const { query, url } = req.body;
+  // 🟢 EXTRACTED FOCUS PARAMETER
+  const { query, url, focus } = req.body;
   const normalized = normalizeGR(query);
 
   try {
-    // 🏛️ STEP 1: CHECK DB FIRST TO SAVE TOKENS
-    const { data: existingCase, error: dbError } = await supabase
-      .from('cases')
-      .select('*')
-      .eq('gr_no', normalized)
-      .maybeSingle();
+    // 🏛️ STEP 1: CHECK DB FIRST TO SAVE TOKENS (Only if NO focus is provided)
+    // If the user wants a specific focus, we MUST hit the AI again, so we bypass the cache.
+    if (!focus) {
+      const { data: existingCase, error: dbError } = await supabase
+        .from('cases')
+        .select('*')
+        .eq('gr_no', normalized)
+        .maybeSingle();
 
-    if (existingCase) {
-      console.log(`📦 Vault Hit: Returning G.R. No. ${normalized} instantly.`);
-      return res.json(existingCase);
+      if (existingCase) {
+        console.log(`📦 Vault Hit: Returning G.R. No. ${normalized} instantly.`);
+        return res.json(existingCase);
+      }
     }
 
     // 🏛️ STEP 2: SCRAPE THE SPECIFIC URL CHOSEN BY THE USER
-    console.log(`🔍 Vault Miss: Scraping selected URL for ${normalized}...`);
+    console.log(`🔍 Vault Miss or Focus Requested: Scraping selected URL for ${normalized}...`);
     let evidenceText = "";
     if (url) {
       evidenceText = await scrapeFullText(url);
@@ -169,9 +173,18 @@ app.post('/api/digest', async (req, res) => {
     }
 
     // 🏛️ STEP 4: GENERATE DIGEST (Gemini)
+    // 🟢 DYNAMIC PROMPT INJECTION: If 'focus' exists, strictly instruct the AI to isolate it.
+    const focusInstruction = focus 
+      ? `CRITICAL DIRECTIVE: The user has requested to FOCUS STRICTLY on the issue of: "${focus}". 
+         You MUST extract the facts, issues, and rulings ONLY as they pertain to "${focus}". 
+         Ignore other unrelated issues in the case (e.g., if asked for Civil Law, ignore Remedial Law issues unless intrinsically tied).` 
+      : `Provide a comprehensive digest covering all major issues.`;
+
     const prompt = `
       SYSTEM: You are Lex Casus Elite, a Philippine Bar Examiner.
       TARGET: ${normalized}
+      
+      ${focusInstruction}
       
       STRICT EXTRACTION & FORMATTING RULES:
       1. TITLE & DATE: Look inside the brackets [ ] at the very top (e.g., "[ G.R. No. 227403. October 13, 2021 ]"). The Date is "October 13, 2021". The Title is the ALL CAPS text immediately following the brackets. DO NOT write "NOT FOUND" if it's there.
@@ -191,7 +204,7 @@ app.post('/api/digest', async (req, res) => {
         "title": "Full Case Title", 
         "date": "Extracted Date", 
         "ponente": "Justice Name",
-        "topic": "Main Legal Subject", 
+        "topic": "${focus ? focus : 'Main Legal Subject'}", 
         "facts": "facts...", 
         "issues": "Issue 1: ... \\nIssue 2: ...", 
         "ratio": "Ruling 1: ... \\nRuling 2: ...", 
@@ -220,6 +233,8 @@ app.post('/api/digest', async (req, res) => {
     }
 
     // 🏛️ STEP 5: STORE IN DB (Supabase) - THE BULLETPROOF METHOD
+    // 🟢 ONLY cache it if it was a general search. If it was a highly specific focused search, 
+    // we don't want to pollute the global cache with a narrow digest.
     const dbRecord = {
         gr_no: normalized,
         title: digest.title || "Untitled",
@@ -235,15 +250,19 @@ app.post('/api/digest', async (req, res) => {
         source_url: url || "Direct URL Import"
     };
 
-    const { data: insertedData, error: insertError } = await supabase
-      .from('cases')
-      .insert([dbRecord])
-      .select();
+    if (!focus) {
+      const { data: insertedData, error: insertError } = await supabase
+        .from('cases')
+        .insert([dbRecord])
+        .select();
 
-    if (insertError) {
-       console.error("❌ Vault Storage Error:", insertError.message);
+      if (insertError) {
+         console.error("❌ Vault Storage Error:", insertError.message);
+      } else {
+         console.log("✅ Case successfully archived in Supabase vault.");
+      }
     } else {
-       console.log("✅ Case successfully archived in Supabase vault.");
+       console.log("✅ Focused case generated. Bypassing global cache.");
     }
 
     res.json(dbRecord);

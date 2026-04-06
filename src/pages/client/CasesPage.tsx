@@ -9,7 +9,7 @@ import {
   Search, Plus, Book, ChevronRight, ChevronDown, BookOpen, Layers, 
   Scale, Trash2, ArrowLeft, Loader2, Sparkles, X, Shield, Gavel, Calendar, 
   User, Target, BookMarked, Hash, ArrowRight, RotateCcw, Edit3, Save, Link, CheckCircle,
-  Download // 🟢 IMPORTED DOWNLOAD ICON
+  Download, Filter // 🟢 IMPORTED FILTER ICON
 } from 'lucide-react';
 
 import { useUsageGuard } from '../../hooks/useUsageGuard';
@@ -20,7 +20,6 @@ import { db } from '../../lib/firebase';
 import ReactQuill from 'react-quill-new';
 import 'react-quill/dist/quill.snow.css';
 
-// 🟢 EXPANDED TOPICS ARRAY TO INCLUDE SPECIFIC SUB-TOPICS
 const TOPICS = [
   'All', 'Civil Law', 'Criminal Law', 'Remedial Law', 'Constitutional Law', 'Labor Law', 'Commercial Law', 'Taxation Law', 'Legal Ethics',
   'Property', 'Succession', 'Obligations & Contracts', 'Persons & Family Relations', 'Sales', 'Agency & Partnership', 'Corporation Law', 'Evidence', 'Criminal Procedure', 'Civil Procedure'
@@ -65,6 +64,7 @@ const CasesPage: React.FC = () => {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [focusTopic, setFocusTopic] = useState(''); // 🟢 NEW STATE: Target Specific Issue
   const [newTag, setNewTag] = useState('');
   const [newProvision, setNewProvision] = useState('');
   const [selectedCode, setSelectedCode] = useState('Civil Code');
@@ -88,6 +88,7 @@ const CasesPage: React.FC = () => {
       doctrines: '', barRelevance: '', provisions: [], tags: [] 
     });
     setInputText('');
+    setFocusTopic(''); // 🟢 Reset focus topic
     setNewProvision('');
     setNewTag('');
     setShowAddForm(false);
@@ -111,7 +112,6 @@ const CasesPage: React.FC = () => {
     setViewMode('flashcards');
   };
 
-  // 🟢 NATIVE PDF DOWNLOAD HANDLER
   const handleDownloadPDF = (c: any) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -166,7 +166,6 @@ const CasesPage: React.FC = () => {
     printWindow.document.write(htmlContent);
     printWindow.document.close();
 
-    // Small delay to ensure styles inject before print dialog opens
     setTimeout(() => {
       printWindow.print();
     }, 300);
@@ -219,9 +218,11 @@ const CasesPage: React.FC = () => {
       const res = await fetch('https://lexcasus-backend.onrender.com/api/digest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 🟢 NEW: Passing the focusTopic to the backend payload
         body: JSON.stringify({ 
           query: searchCard.grNo,
-          url: searchCard.links.viewSource 
+          url: searchCard.links.viewSource,
+          focus: focusTopic.trim() || undefined 
         })
       });
 
@@ -246,7 +247,7 @@ const CasesPage: React.FC = () => {
         grNo: aiResponse.grNo || searchCard.grNo || '',
         date: aiResponse.date || '',
         ponente: aiResponse.ponente || '',
-        topic: aiResponse.topic || '',
+        topic: focusTopic ? `${focusTopic} (${aiResponse.topic})` : (aiResponse.topic || ''), // Set the topic based on focus
         facts: formatForEditor(aiResponse.facts),
         issues: formatForEditor(aiResponse.issues),
         ratio: formatForEditor(aiResponse.ratio),
@@ -364,7 +365,6 @@ const CasesPage: React.FC = () => {
             <ArrowLeft size={16}/> Back to My Cases
           </button>
           
-          {/* 🟢 ADDED PDF DOWNLOAD & FLASHCARD ACTIONS */}
           <div className="flex items-center gap-2">
             <button onClick={() => handleDownloadPDF(selectedCase)} className="btn-secondary text-xs px-4 py-2 border-navy-200 text-navy-700 hover:bg-navy-50">
               <Download size={14} /> Save as PDF
@@ -511,27 +511,27 @@ const CasesPage: React.FC = () => {
             <div className="space-y-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-navy-900 flex items-center gap-2"><div className="w-2 h-2 bg-gold-500 rounded-full"></div> Facts</label>
-                <ReactQuill theme="snow" value={formData.facts} onChange={(val: string) => setFormData({...formData, facts: val})} modules={quillModules} className="bg-white rounded-lg" />
+                <ReactQuill theme="snow" value={formData.facts || ''} onChange={(val: string, delta: any, source: string) => { if (source === 'user') setFormData({...formData, facts: val}) }} modules={quillModules} className="bg-white rounded-lg" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-navy-900 flex items-center gap-2"><div className="w-2 h-2 bg-gold-500 rounded-full"></div> Issues</label>
-                <ReactQuill theme="snow" value={formData.issues} onChange={(val: string) =>setFormData({...formData, issues: val})} modules={quillModules} className="bg-white rounded-lg" />
+                <ReactQuill theme="snow" value={formData.issues || ''} onChange={(val: string, delta: any, source: string) => { if (source === 'user') setFormData({...formData, issues: val}) }} modules={quillModules} className="bg-white rounded-lg" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-navy-900 flex items-center gap-2"><div className="w-2 h-2 bg-gold-500 rounded-full"></div> Ratio Decidendi</label>
-                <ReactQuill theme="snow" value={formData.ratio} onChange={(val: string) => setFormData({...formData, ratio: val})} modules={quillModules} className="bg-white rounded-lg" />
+                <ReactQuill theme="snow" value={formData.ratio || ''} onChange={(val: string, delta: any, source: string) => { if (source === 'user') setFormData({...formData, ratio: val}) }} modules={quillModules} className="bg-white rounded-lg" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-navy-900 flex items-center gap-2"><div className="w-2 h-2 bg-gold-500 rounded-full"></div> Disposition</label>
-                <ReactQuill theme="snow" value={formData.disposition} onChange={(val: string) => setFormData({...formData, disposition: val})} modules={quillModules} className="bg-white rounded-lg" />
+                <ReactQuill theme="snow" value={formData.disposition || ''} onChange={(val: string, delta: any, source: string) => { if (source === 'user') setFormData({...formData, disposition: val}) }} modules={quillModules} className="bg-white rounded-lg" />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-navy-900 flex items-center gap-2"><div className="w-2 h-2 bg-gold-500 rounded-full"></div> Doctrines</label>
-                <ReactQuill theme="snow" value={formData.doctrines} onChange={(val: string) => setFormData({...formData, doctrines: val})} modules={quillModules} className="bg-white rounded-lg border-gold-200" />
+                <ReactQuill theme="snow" value={formData.doctrines || ''} onChange={(val: string, delta: any, source: string) => { if (source === 'user') setFormData({...formData, doctrines: val}) }} modules={quillModules} className="bg-white rounded-lg border-gold-200" />
               </div>
             </div>
 
@@ -640,10 +640,10 @@ const CasesPage: React.FC = () => {
             </div>
           ) : (
             <div className="bg-gold-50/40 border border-gold-200 rounded-xl p-5 space-y-6 animate-fade-in">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col md:flex-row items-center gap-3">
                 <input 
                   autoFocus 
-                  className="input-field flex-1 py-3 px-4 text-base border-gold-300" 
+                  className="input-field flex-1 py-3 px-4 text-base border-gold-300 w-full" 
                   placeholder="Enter G.R. No. or Case Title to search the vault..." 
                   value={inputText} 
                   onChange={(e) => setInputText(e.target.value)} 
@@ -652,15 +652,26 @@ const CasesPage: React.FC = () => {
                 <button 
                   onClick={handleSearch} 
                   disabled={!inputText.trim() || isSearching} 
-                  className="btn-primary bg-navy-900 hover:bg-navy-800 text-gold-500 py-3 px-6 shadow-md"
+                  className="btn-primary bg-navy-900 hover:bg-navy-800 text-gold-500 py-3 px-6 shadow-md w-full md:w-auto"
                 >
                   {isSearching ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />}
                   {isSearching ? 'Searching...' : 'Find Cases'}
                 </button>
               </div>
 
+              {/* 🟢 NEW FIELD: Target Issue / Focus Topic */}
+              <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gold-200/50">
+                <Filter size={18} className="text-gold-600" />
+                <input 
+                  className="input-field flex-1 py-2 px-4 text-sm border-gold-200 bg-white" 
+                  placeholder="Optional: Specify a topic to focus the digest on (e.g., 'Focus only on the issue of Succession')" 
+                  value={focusTopic} 
+                  onChange={(e) => setFocusTopic(e.target.value)} 
+                />
+              </div>
+
               {searchResults.length > 0 && (
-                <div className="pt-4 border-t border-gold-200/50 space-y-4 animate-fade-in">
+                <div className="pt-4 border-t border-gold-200/50 space-y-4 animate-fade-in mt-4">
                   <h4 className="text-sm font-bold text-navy-900 uppercase tracking-widest flex items-center gap-2">
                     <CheckCircle size={16} className="text-gold-500" /> Select the Correct Document
                   </h4>
