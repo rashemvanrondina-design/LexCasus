@@ -72,6 +72,7 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [referralCode, setReferralCode] = useState(''); // 🟢 Added Referral State
   const [showPassword, setShowPassword] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -113,13 +114,11 @@ const LoginPage: React.FC = () => {
   };
   const resetForgotFlow = () => { setIsForgotPassword(false); setForgotSent(false); setForgotEmail(''); setError(null); };
 
-  // 🟢 NEW: Handles users stuck in unverified limbo
   const handleResendVerification = async () => {
     if (loading) return;
     setLoading(true);
     setError(null);
     try {
-      // Temporarily authenticate to fire the verification email
       const userCred = await signInWithEmailAndPassword(auth, email, password);
       await sendEmailVerification(userCred.user);
       await signOut(auth);
@@ -133,12 +132,13 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); 
-    if (loading) return; // 🟢 SECURITY: Prevents double-clicking duplicate account creation
+    if (loading) return; 
     setLoading(true); 
     setError(null);
     try {
       if (isRegister) {
-        const success = await register(name, email, password);
+        // 🟢 Pass the referral code to the register function
+        const success = await register(name, email, password, referralCode);
         if (success) setVerificationSent(true);
         else setError(useAuthStore.getState().error || "Registration failed.");
       } else {
@@ -535,8 +535,26 @@ const LoginPage: React.FC = () => {
                       
                       <form onSubmit={handleSubmit} className="space-y-4">
                         {isRegister && <div className="relative flex items-center"><Shield className={`absolute left-4 w-4 h-4 ${isDark ? 'text-white/40' : 'text-slate-400'}`} /><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full Name" className={`w-full pl-11 pr-4 py-3.5 rounded-xl border focus:outline-none focus:ring-1 transition-all text-sm ${isDark ? 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-gold-500/50 focus:ring-gold-500/50' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-gold-500 focus:ring-gold-500'}`} required /></div>}
+                        
                         <div className="relative flex items-center"><Mail className={`absolute left-4 w-4 h-4 ${isDark ? 'text-white/40' : 'text-slate-400'}`} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" className={`w-full pl-11 pr-4 py-3.5 rounded-xl border focus:outline-none focus:ring-1 transition-all text-sm ${isDark ? 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-gold-500/50 focus:ring-gold-500/50' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-gold-500 focus:ring-gold-500'}`} required /></div>
+                        
                         <div className="relative flex items-center"><Lock className={`absolute left-4 w-4 h-4 ${isDark ? 'text-white/40' : 'text-slate-400'}`} /><input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required minLength={6} className={`w-full pl-11 pr-11 py-3.5 rounded-xl border focus:outline-none focus:ring-1 transition-all text-sm ${isDark ? 'bg-white/5 border-white/10 text-white placeholder-white/30 focus:border-gold-500/50 focus:ring-gold-500/50' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-gold-500 focus:ring-gold-500'}`} /><button type="button" onClick={() => setShowPassword(!showPassword)} className={`absolute right-4 transition-colors ${isDark ? 'text-white/40 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}>{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></div>
+
+                        {/* 🟢 NEW REFERRAL CODE INPUT */}
+                        {isRegister && (
+                          <div className="relative flex items-center mt-2">
+                            <Sparkles className={`absolute left-4 w-4 h-4 ${isDark ? 'text-gold-400/50' : 'text-gold-500/50'}`} />
+                            <input 
+                              type="text" 
+                              value={referralCode} 
+                              onChange={(e) => setReferralCode(e.target.value.toUpperCase())} 
+                              placeholder="Referral Code (Optional)" 
+                              maxLength={6}
+                              className={`w-full pl-11 pr-4 py-3.5 rounded-xl border focus:outline-none focus:ring-1 transition-all text-sm font-bold tracking-widest ${isDark ? 'bg-gold-500/5 border-gold-500/20 text-gold-400 placeholder-gold-400/30 focus:border-gold-500 focus:ring-gold-500/50' : 'bg-gold-50 border-gold-200 text-gold-700 placeholder-gold-400 focus:border-gold-500 focus:ring-gold-500'}`} 
+                            />
+                          </div>
+                        )}
+
                         {!isRegister && <div className="flex justify-end"><button type="button" onClick={() => { setIsForgotPassword(true); setError(null); }} className={`text-xs transition-colors ${isDark ? 'text-white/50 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>Forgot password?</button></div>}
                         
                         <button type="submit" disabled={loading} className={`w-full py-3.5 mt-2 rounded-xl font-bold text-sm shadow-lg transition-shadow disabled:opacity-50 flex justify-center items-center gap-2 ${isDark ? 'bg-gradient-to-r from-gold-500 to-gold-600 text-navy-950 shadow-gold-500/20 hover:shadow-gold-500/40' : 'bg-gradient-to-r from-gold-400 to-gold-500 text-white shadow-gold-500/30 hover:shadow-gold-500/50'}`}>{loading ? 'Authenticating...' : (isRegister ? 'Create Account' : 'Sign In')}{!loading && <ArrowRight className="w-4 h-4" />}</button>

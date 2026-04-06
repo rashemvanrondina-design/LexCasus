@@ -11,7 +11,7 @@ import {
 } from 'firebase/auth';
 import { 
   doc, getDoc, setDoc, updateDoc, onSnapshot, 
-  query, collection, where, getDocs 
+  query, collection, where, getDocs, increment // 🟢 IMPORTED INCREMENT
 } from 'firebase/firestore'; 
 import { auth, db } from '../lib/firebase';
 import type { User, SubscriptionPlan, UserUsage } from '../types'; 
@@ -42,7 +42,8 @@ interface AuthState {
   
   login: (email: string, password: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>; 
-  register: (name: string, email: string, password: string) => Promise<boolean>;
+  // 🟢 UPDATED: Added optional appliedReferralCode parameter
+  register: (name: string, email: string, password: string, appliedReferralCode?: string) => Promise<boolean>;
   
   logout: () => Promise<void>;
   setSubscription: (plan: SubscriptionPlan) => Promise<void>;
@@ -50,7 +51,6 @@ interface AuthState {
   clearError: () => void; 
   updateUser: (data: Partial<User>) => Promise<boolean>;
   
-  // 🟢 The Usage Tracker
   incrementUsage: (type: 'chat' | 'case' | 'practice' | 'deconstruct') => Promise<void>; 
 }
 
@@ -201,6 +201,8 @@ export const useAuthStore = create<AuthState>()(
               await updateDoc(userRef, updatePayload);
             }
           } else {
+            // 🟢 Give Google users a referral code too!
+            const myCode = Math.random().toString(36).substring(2, 8).toUpperCase();
             userData = {
               id: firebaseUser.uid,
               email: firebaseUser.email || '',
@@ -211,7 +213,8 @@ export const useAuthStore = create<AuthState>()(
               isActive: true,
               createdAt: new Date().toISOString(),
               usage: INITIAL_USAGE, 
-            };
+              referralCode: myCode // 🟢 ADDED HERE
+            } as User;
             await setDoc(userRef, userData);
           }
 
@@ -228,30 +231,53 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      register: async (name, email, password) => {
+      // 🟢 UPDATED REGISTER: Referral Logic
+      register: async (name, email, password, appliedReferralCode?: string) => {
         set({ error: null });
         try {
-          // 🟢 1. CREATE ACCOUNT
+          // 1. CREATE ACCOUNT
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           
-          // 🟢 2. SEND OTP/VERIFICATION LINK
+          // 2. SEND OTP/VERIFICATION LINK
           await sendEmailVerification(userCredential.user);
 
-          const newUser: User = {
+          // 3. GENERATE UNIQUE REFERRAL CODE
+          const myCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+          let startingSubscription = 'free';
+
+          // 4. CHECK REFERRAL SYSTEM
+          if (appliedReferralCode) {
+             const q = query(collection(db, 'users'), where('referralCode', '==', appliedReferralCode.trim().toUpperCase()));
+             const snapshot = await getDocs(q);
+             
+             if (!snapshot.empty) {
+                 const referrerDoc = snapshot.docs[0];
+                 // Reward the Referrer! (Upgrade to premium and track count)
+                 await updateDoc(doc(db, 'users', referrerDoc.id), {
+                     'usage.referredCount': increment(1),
+                     'subscription': 'premium' 
+                 });
+                 // Reward the New User!
+                 startingSubscription = 'premium';
+             }
+          }
+
+          const newUser: any = {
             id: userCredential.user.uid,
             email: email.toLowerCase(),
             name,
             role: 'client',
-            subscription: 'free',
+            subscription: startingSubscription,
             isActive: true,
             createdAt: new Date().toISOString(),
             usage: INITIAL_USAGE, 
+            referralCode: myCode // 🟢 Save their unique code
           };
 
-          // 🟢 3. SAVE TO DATABASE
+          // 5. SAVE TO DATABASE
           await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
           
-          // 🟢 4. FORCE THEM TO LOGOUT AND VERIFY
+          // 6. FORCE THEM TO LOGOUT AND VERIFY
           await signOut(auth);
           set({ user: null, isAuthenticated: false, isAdmin: false });
 
@@ -298,7 +324,6 @@ export const useAuthStore = create<AuthState>()(
           useNotesStore.getState().clearNotes();
           useAdminStore.getState().clearAdminData();
 
-          // 🟢 Wipe the Promo memory when they log out!
           sessionStorage.removeItem('lexcasus_promo_seen');
 
           set({ user: null, isAuthenticated: false, isAdmin: false });
@@ -323,21 +348,18 @@ export const useAuthStore = create<AuthState>()(
       incrementUsage: async (type) => {
         const currentUser = get().user;
         
-        // Failsafe & Admin Bypass (Admins don't consume quotas)
         if (!currentUser || !currentUser.usage) return;
         if (currentUser.role === 'admin' || currentUser.email === 'rashemvanrondina@gmail.com') return;
 
-        // Clone the current usage so we can mutate it
         const newUsage = { ...currentUser.usage };
 
-        // 🟢 Increment the specific feature
         switch (type) {
           case 'chat':
             newUsage.dailyChatCount += 1;
             break;
           case 'case':
             newUsage.dailyCaseCount += 1;
-            newUsage.monthlyCaseCount += 1; // Cases count towards both daily AND monthly limits
+            newUsage.monthlyCaseCount += 1; 
             break;
           case 'practice':
             newUsage.dailyPracticeCount += 1;
@@ -348,9 +370,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          // Sync with Firebase Database
           await updateDoc(doc(db, 'users', currentUser.id), { usage: newUsage });
-          // Optimistically update the UI instantly
           set({ user: { ...currentUser, usage: newUsage } });
         } catch (error) {
           console.error("Failed to update usage ledger:", error);

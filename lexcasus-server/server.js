@@ -365,6 +365,51 @@ app.post('/api/deconstruct', async (req, res) => {
   }
 });
 
+// ============================================================
+// 🟢 PHASE 4: BAR EXAM PRACTICE GENERATOR
+// ============================================================
+
+app.post('/api/practice', async (req, res) => {
+  const { subject, topic } = req.body; 
+  
+  const prompt = `
+    SYSTEM: You are an Elite Philippine Bar Examiner.
+    TASK: Generate a challenging Bar Exam practice question based on the following parameters:
+    - Subject: ${subject || 'Philippine Law'}
+    - Specific Topic: ${topic || 'Random Bar Topic'}
+    
+    REQUIREMENTS:
+    1. Create a realistic, highly detailed factual scenario (like a real Supreme Court Bar Exam question).
+    2. End with a specific legal question (e.g., "Is the contract valid? Explain.").
+    3. Provide the official Suggested Answer using the ALAC (Answer, Legal Basis, Analysis, Conclusion) method.
+    
+    JSON SCHEMA:
+    {
+      "question": "The factual scenario and the specific question...",
+      "suggestedAnswer": "The official ALAC suggested answer...",
+      "issue": "The main legal issue involved"
+    }
+  `;
+
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: MODEL_NAME, 
+      generationConfig: { responseMimeType: 'application/json' } 
+    });
+    
+    const result = await model.generateContent(prompt);
+    
+    const sanitizedText = cleanJSON(result.response.text());
+    const practiceData = JSON.parse(sanitizedText);
+    
+    res.json(practiceData);
+    
+  } catch (e) { 
+    console.error("Practice Generator Error:", e);
+    res.status(500).json({ error: "Failed to generate practice question." }); 
+  }
+});
+
 console.log("⚖️  Attempting to bind to Port 5000...");
 
 const PORT = process.env.PORT || 5000;
