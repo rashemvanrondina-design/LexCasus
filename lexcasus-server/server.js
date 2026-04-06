@@ -135,13 +135,11 @@ app.post('/api/search', async (req, res) => {
 // ============================================================
 
 app.post('/api/digest', async (req, res) => {
-  // 🟢 EXTRACTED FOCUS PARAMETER
   const { query, url, focus } = req.body;
   const normalized = normalizeGR(query);
 
   try {
     // 🏛️ STEP 1: CHECK DB FIRST TO SAVE TOKENS (Only if NO focus is provided)
-    // If the user wants a specific focus, we MUST hit the AI again, so we bypass the cache.
     if (!focus) {
       const { data: existingCase, error: dbError } = await supabase
         .from('cases')
@@ -173,28 +171,29 @@ app.post('/api/digest', async (req, res) => {
     }
 
     // 🏛️ STEP 4: GENERATE DIGEST (Gemini)
-    // 🟢 DYNAMIC PROMPT INJECTION: If 'focus' exists, strictly instruct the AI to isolate it.
+    // 🟢 ENHANCED: Demand comprehensive facts!
     const focusInstruction = focus 
       ? `CRITICAL DIRECTIVE: The user has requested to FOCUS STRICTLY on the issue of: "${focus}". 
-         You MUST extract the facts, issues, and rulings ONLY as they pertain to "${focus}". 
-         Ignore other unrelated issues in the case (e.g., if asked for Civil Law, ignore Remedial Law issues unless intrinsically tied).` 
-      : `Provide a comprehensive digest covering all major issues.`;
+         You MUST extract the issues and rulings ONLY as they pertain to "${focus}". 
+         For the FACTS, provide a highly comprehensive, detailed, chronological narrative of what truly happened in the case, heavily emphasizing the factual background that leads up to the "${focus}" issue.` 
+      : `Provide a comprehensive digest covering all major issues. For the FACTS, provide a highly detailed, chronological narrative of the events leading up to the Supreme Court. Do not over-summarize the facts.`;
 
     const prompt = `
-      SYSTEM: You are Lex Casus Elite, a Philippine Bar Examiner.
+      SYSTEM: You are Lex Casus Elite, a Philippine Bar Examiner and Expert Legal Scholar.
       TARGET: ${normalized}
       
       ${focusInstruction}
       
       STRICT EXTRACTION & FORMATTING RULES:
-      1. TITLE & DATE: Look inside the brackets [ ] at the very top (e.g., "[ G.R. No. 227403. October 13, 2021 ]"). The Date is "October 13, 2021". The Title is the ALL CAPS text immediately following the brackets. DO NOT write "NOT FOUND" if it's there.
-      2. FOR ISSUES: You MUST format as:
+      1. TITLE & DATE: Look inside the brackets [ ] at the very top. DO NOT write "NOT FOUND" if it's there.
+      2. FOR FACTS: Write a COMPREHENSIVE and DETAILED chronological story of the case. Do not leave out important material dates, actions, or lower court decisions (RTC/CA). Ensure the client understands exactly what truly happened.
+      3. FOR ISSUES: You MUST format as:
          Issue 1: [Question]
          Issue 2: [Question]
-      3. FOR RATIO (RULINGS): You MUST match the issues exactly:
+      4. FOR RATIO (RULINGS): You MUST match the issues exactly:
          Ruling 1: [The specific answer and legal reasoning for Issue 1]
          Ruling 2: [The specific answer and legal reasoning for Issue 2]
-      4. Use ONLY the provided text.
+      5. Use ONLY the provided text.
 
       CASE TEXT:
       ${getSmartContext(evidenceText)}
@@ -205,7 +204,7 @@ app.post('/api/digest', async (req, res) => {
         "date": "Extracted Date", 
         "ponente": "Justice Name",
         "topic": "${focus ? focus : 'Main Legal Subject'}", 
-        "facts": "facts...", 
+        "facts": "Detailed and comprehensive chronological facts of the case...", 
         "issues": "Issue 1: ... \\nIssue 2: ...", 
         "ratio": "Ruling 1: ... \\nRuling 2: ...", 
         "disposition": "fallo...",
@@ -221,7 +220,6 @@ app.post('/api/digest', async (req, res) => {
 
     const result = await model.generateContent(prompt);
     
-    // 🛡️ Safety check to ensure we actually got JSON
     let digest;
     try {
       const rawResponse = result.response.text();
@@ -232,9 +230,7 @@ app.post('/api/digest', async (req, res) => {
        return res.status(500).json({ error: "AI returned an invalid format. Please try again." });
     }
 
-    // 🏛️ STEP 5: STORE IN DB (Supabase) - THE BULLETPROOF METHOD
-    // 🟢 ONLY cache it if it was a general search. If it was a highly specific focused search, 
-    // we don't want to pollute the global cache with a narrow digest.
+    // 🏛️ STEP 5: STORE IN DB (Supabase)
     const dbRecord = {
         gr_no: normalized,
         title: digest.title || "Untitled",
@@ -315,7 +311,6 @@ app.post('/api/grade', async (req, res) => {
     
     const result = await model.generateContent(prompt);
     
-    // 🛡️ Strip markdown safely before parsing
     const sanitizedText = cleanJSON(result.response.text());
     const evaluation = JSON.parse(sanitizedText);
     
