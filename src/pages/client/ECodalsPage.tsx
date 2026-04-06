@@ -11,7 +11,7 @@ import { cn } from '../../lib/utils';
 import {
   ChevronDown, ChevronRight, Edit3, Save, ArrowLeft,
   Search, FileText, Plus, Trash2, Loader2, Scale, Lock, Book,
-  Sparkles, Gavel, ShieldCheck, Library
+  Sparkles, Gavel, ShieldCheck, Library, Bookmark, Folder, Layers
 } from 'lucide-react';
 import type { CodalProvision } from '../../types/index';
 
@@ -127,7 +127,6 @@ const ECodalsPage: React.FC = () => {
   // --- LOGIC HANDLERS ---
 
   const handleAIDeconstruct = async (provision: CodalProvision) => {
-    // 🟢 ENFORCE THE LAW: AI Deconstruction Limits
     if (!checkAccess('aiDeconstruction')) {
       setUpgradeConfig({ 
         feature: 'AI Deconstruction', 
@@ -140,7 +139,6 @@ const ECodalsPage: React.FC = () => {
     const targetId = `${provision.id}::AI_ANALYSIS`; 
     setIsAnalyzing(provision.id);
     try {
-      // 🟢 FIX: Clean URL with proper /api/deconstruct endpoint
       const res = await fetch('https://lexcasus-backend.onrender.com/api/deconstruct', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,7 +151,6 @@ const ECodalsPage: React.FC = () => {
       const data = await res.json();
       const result = data.analysis;
 
-      // 🟢 BILLING: Increment AI Deconstruction Count
       if (user && !isAdmin) {
         const userRef = doc(db, 'users', user.id);
         await updateDoc(userRef, { 'usage.aiDeconstructionCount': increment(1) });
@@ -210,7 +207,9 @@ const ECodalsPage: React.FC = () => {
       const matchSearch = search === '' || 
         c.content.toLowerCase().includes(search.toLowerCase()) ||
         c.articleNumber.toLowerCase().includes(search.toLowerCase()) ||
-        (c.title || '').toLowerCase().includes(search.toLowerCase());
+        (c.title || '').toLowerCase().includes(search.toLowerCase()) ||
+        (c.bookPart || '').toLowerCase().includes(search.toLowerCase()) ||
+        (c.titlePart || '').toLowerCase().includes(search.toLowerCase());
       return matchBook && matchSearch;
     })
     .sort((a, b) => {
@@ -235,12 +234,9 @@ const ECodalsPage: React.FC = () => {
 
   const handleSaveNotes = async (targetId: string) => {
     if (!user) return;
-
-    // 🟢 ENFORCE THE LAW: Codal Notes Limits (100 Free, 500 Premium)
     const currentNotesCount = Object.keys(userNotes).length;
     const notesLimit = user.subscription === 'free' ? 100 : user.subscription === 'premium' ? 500 : Infinity;
     
-    // Only block if they are trying to create a *brand new* note, allow editing of existing ones
     if (!userNotes[targetId] && currentNotesCount >= notesLimit && !isAdmin) {
       setUpgradeConfig({ feature: 'Codal Annotations', text: `limit of ${notesLimit} saved notes` });
       setShowUpgradeModal(true);
@@ -258,7 +254,6 @@ const ECodalsPage: React.FC = () => {
     setExpandedSections(prev => ({ ...prev, [targetId]: !prev[targetId] }));
   };
 
-  // 🟢 LIVE CALCULATOR (Removed Research Vault aggregation)
   const getCrossReferences = (provisionId: string) => {
     const provision = codals.find(c => c.id === provisionId);
     if (!provision) return { linkedCases: [] };
@@ -266,7 +261,6 @@ const ECodalsPage: React.FC = () => {
     const artNum = provision.articleNumber.match(/\d+/)?.[0] || "";
     const provBookLower = (provision.book || "").toLowerCase();
     
-    // JURISPRUDENCE MATCHING (Strict Tag Matching)
     const strictLinkedCases = cases.filter(c => {
       if (!c.provisions || !Array.isArray(c.provisions)) return false;
 
@@ -383,6 +377,11 @@ const ECodalsPage: React.FC = () => {
     );
   };
 
+  // 🟢 HIERARCHY STATE TRACKERS FOR RENDER LOOP
+  let currentBookPart = '';
+  let currentTitlePart = '';
+  let currentChapter = '';
+
   return (
     <>
       {/* 🟢 THE DYNAMIC PAYWALL MODAL */}
@@ -421,7 +420,7 @@ const ECodalsPage: React.FC = () => {
         <div className="flex flex-col lg:flex-row gap-4 z-20">
           <div className="relative flex-1 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-gold-500 transition-colors" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search articles or keywords..." className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-navy-950 border-2 border-gray-200 dark:border-navy-800 focus:border-gold-500 rounded-xl outline-none shadow-sm transition-all" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search articles, titles, or structure..." className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-navy-950 border-2 border-gray-200 dark:border-navy-800 focus:border-gold-500 rounded-xl outline-none shadow-sm transition-all" />
           </div>
           
           <div className="relative w-full lg:w-64" ref={dropdownRef}>
@@ -446,126 +445,193 @@ const ECodalsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {loading ? <div className="flex justify-center p-20"><Loader2 className="animate-spin text-gold-500" /></div> : displayedCodals.map((provision) => {
+            
+            // 🟢 HIERARCHICAL HEADER INJECTION LOGIC
+            // We only show the structural headers if the user is NOT actively searching for a specific keyword
+            const isSearching = search.trim().length > 0;
+            let showBookPart = false, showTitlePart = false, showChapter = false;
+
+            if (!isSearching) {
+               showBookPart = !!provision.bookPart && provision.bookPart !== currentBookPart;
+               if (showBookPart) {
+                 currentBookPart = provision.bookPart || '';
+                 currentTitlePart = ''; // Reset child
+                 currentChapter = '';   // Reset child
+               }
+
+               showTitlePart = !!provision.titlePart && provision.titlePart !== currentTitlePart;
+               if (showTitlePart) {
+                 currentTitlePart = provision.titlePart || '';
+                 currentChapter = '';   // Reset child
+               }
+
+               showChapter = !!provision.chapter && provision.chapter !== currentChapter;
+               if (showChapter) {
+                 currentChapter = provision.chapter || '';
+               }
+            }
+
             const isExpanded = expandedId === provision.id;
             const savedAnalysis = provision.aiAnalysis || userNotes[`${provision.id}::AI_ANALYSIS`]?.content;
-            
-            // 🟢 GET LIVE SYNCED CROSS-REFERENCES (Now only Jurisprudence)
             const currentCrossRefs = isExpanded ? getCrossReferences(provision.id) : { linkedCases: [] };
 
             return (
-              <div key={provision.id} className={cn("card overflow-hidden border-gray-100 dark:border-navy-800", isExpanded && "ring-2 ring-gold-500/30 shadow-xl")}>
-                <button onClick={() => setExpandedId(isExpanded ? null : provision.id)} className="w-full flex items-center justify-between p-6 hover:bg-gray-50/50 transition-colors text-left">
-                  <div className="flex items-center gap-4">
-                    {isExpanded ? <ChevronDown size={18} className="text-gold-500"/> : <ChevronRight size={18} className="text-gray-400"/>}
-                    <div>
-                      <span className="text-[10px] font-black text-navy-600 dark:text-gold-400 bg-navy-50 dark:bg-navy-900/50 px-2 py-1 rounded uppercase tracking-widest">{getAbbreviation(provision.book)}</span>
-                      <h3 className="font-black text-navy-900 dark:text-white mt-1 text-sm tracking-tight">{provision.articleNumber} — {provision.title}</h3>
-                    </div>
-                  </div>
-                  {isExpanded && <Sparkles className="text-gold-500 animate-pulse" size={18} />}
-                </button>
-
-                {isExpanded && (
-                  <div className="flex flex-col lg:flex-row border-t border-gray-100 dark:border-navy-800 bg-white dark:bg-navy-950 animate-fade-in relative">
-                    
-                    {/* 🟢 LEFT SIDE: CODAL TEXT & ARTICLE LEVEL NOTES */}
-                    <div className="flex-1 p-8 border-r border-gray-100 dark:border-navy-800/50">
-                      <div className="flex items-center gap-2 mb-6 text-navy-900 dark:text-white opacity-60">
-                        <FileText size={16} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Codal Text</span>
+              <React.Fragment key={provision.id}>
+                {/* 🟢 RENDER THE FOLDER HEADERS IF THEY CHANGED */}
+                {!isSearching && (
+                  <>
+                    {showBookPart && (
+                      <div className="mt-8 mb-4 pt-4 border-t-2 border-navy-900 dark:border-gold-500/50 flex items-center gap-3">
+                         <Bookmark className="text-gold-500 shrink-0" size={24} />
+                         <h2 className="text-xl font-black text-navy-900 dark:text-white tracking-tight">{provision.bookPart}</h2>
                       </div>
-                      {renderStructuredContent(provision.id, provision.content)}
-                      
-                      <div className="mt-8 pt-8 border-t-2 border-dashed border-gray-100 dark:border-navy-800">
-                        <div className="flex items-center gap-2 mb-4">
-                          <Library size={16} className="text-gold-500" />
-                          <span className="text-xs font-black uppercase tracking-widest text-navy-900 dark:text-white">General Article Annotations</span>
-                        </div>
-                        {renderInteractionZone(provision.id)}
+                    )}
+                    {showTitlePart && (
+                      <div className="mt-6 mb-3 flex items-center gap-2 pl-2">
+                         <Folder className="text-gray-400 dark:text-gray-500 shrink-0" size={18} />
+                         <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-widest">{provision.titlePart}</h3>
                       </div>
-                    </div>
-
-                    <div className="w-full lg:w-[420px] bg-navy-50/20 dark:bg-navy-900/10 p-8">
-                      {sidePanelContent?.provisionId === provision.id ? (
-                        <div className="animate-fade-in space-y-4">
-                          <button 
-                            onClick={() => setSidePanelContent(null)} 
-                            className="text-xs font-bold flex items-center gap-2 text-gray-500 hover:text-navy-900 bg-white border border-gray-200 px-3 py-2 rounded-lg shadow-sm"
-                          >
-                            <ArrowLeft size={14} /> Back to Analysis & Links
-                          </button>
-                          
-                          {sidePanelContent.type === 'case' && (
-                            <div className="bg-white dark:bg-navy-900 p-6 rounded-2xl shadow-sm border border-gold-200 max-h-[600px] overflow-y-auto custom-scrollbar">
-                              <div className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">{sidePanelContent.data.grNo}</div>
-                              <h3 className="font-bold text-navy-900 dark:text-white leading-snug mb-4">{sidePanelContent.data.title}</h3>
-                              <div className="space-y-4 text-xs text-gray-700 dark:text-gray-300">
-                                 <div><strong className="text-gold-600">Facts:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.facts}</span></div>
-                                 <div><strong className="text-gold-600">Issues:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.issues}</span></div>
-                                 <div className="p-3 bg-navy-50 dark:bg-navy-950 rounded border-l-2 border-navy-900"><strong className="text-navy-900 dark:text-gold-400">Ruling:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.ratio}</span></div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                      ) : (
-                        <div className="space-y-8 animate-fade-in">
-                          <div className="space-y-4">
-                              {!savedAnalysis ? (
-                                  <button 
-                                      onClick={() => handleAIDeconstruct(provision)}
-                                      disabled={!!isAnalyzing}
-                                      className="w-full py-4 bg-navy-950 dark:bg-gold-500 text-white dark:text-navy-950 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:opacity-50 transition-all"
-                                  >
-                                      {isAnalyzing === provision.id ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16} />}
-                                      {isAnalyzing === provision.id ? "Processing Logic..." : "Initialize AI Deconstruction"}
-                                  </button>
-                              ) : (
-                                  <div className="flex items-center gap-2 text-gold-500 pb-2 border-b border-gold-200/30">
-                                      <ShieldCheck size={16} />
-                                      <span className="text-[10px] font-black uppercase tracking-widest">
-                                          {provision.aiAnalysis ? "Verified Admin Insight" : "Personal AI Analysis Secured"}
-                                      </span>
-                                  </div>
-                              )}
-                              
-                              {savedAnalysis && (
-                                  <div className="p-6 bg-white dark:bg-navy-900 rounded-3xl border border-gold-200/50 dark:border-navy-800 text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-64 overflow-y-auto custom-scrollbar shadow-inner text-left">
-                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{savedAnalysis}</ReactMarkdown>
-                                  </div>
-                              )}
-                          </div>
-
-                          <div className="pt-2 border-t border-gray-100 dark:border-navy-800/50">
-                              <button 
-                                onClick={() => setShowLinkedCases(prev => ({...prev, [provision.id]: !prev[provision.id]}))} 
-                                className="w-full flex justify-between items-center py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-navy-600 transition-colors"
-                              >
-                                  <span className="flex items-center gap-2"><Gavel size={14} className="text-blue-500" /> Linked Jurisprudence ({currentCrossRefs.linkedCases.length})</span>
-                                  <ChevronDown size={14} className={cn("transition-transform", showLinkedCases[provision.id] && "rotate-180")} />
-                              </button>
-                              
-                              {showLinkedCases[provision.id] && (
-                                <div className="mt-3 space-y-3 animate-fade-in">
-                                    {currentCrossRefs.linkedCases.map((c: any) => (
-                                        <div key={c.id} onClick={() => setSidePanelContent({ provisionId: provision.id, type: 'case', data: c })} className="p-4 bg-white dark:bg-navy-900 border border-gray-100 dark:border-navy-800 rounded-2xl hover:border-blue-500 cursor-pointer shadow-sm transition-all group text-left">
-                                            <p className="text-[11px] font-bold text-navy-900 dark:text-gray-200 truncate group-hover:text-blue-600">{c.title}</p>
-                                            <p className="text-[9px] text-gray-400 mt-1 font-bold uppercase tracking-wider">{c.grNo}</p>
-                                        </div>
-                                    ))}
-                                    {currentCrossRefs.linkedCases.length === 0 && <p className="text-[10px] italic text-gray-400 text-left px-2">No library matches found.</p>}
-                                </div>
-                              )}
-                          </div>
-
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    )}
+                    {showChapter && (
+                      <div className="mt-4 mb-2 flex items-center gap-2 pl-6">
+                         <Layers className="text-gray-300 dark:text-gray-600 shrink-0" size={14} />
+                         <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">{provision.chapter}</h4>
+                      </div>
+                    )}
+                  </>
                 )}
-              </div>
+
+                {/* 🟢 RENDER THE ACTUAL ARTICLE CARD */}
+                <div className={cn(
+                  "card overflow-hidden transition-all duration-300", 
+                  isExpanded ? "ring-2 ring-gold-500/30 shadow-xl border-transparent" : "border-gray-100 dark:border-navy-800",
+                  !isSearching && (provision.titlePart || provision.chapter) ? "ml-8" : "" // Indent visually if inside a folder
+                )}>
+                  <button onClick={() => setExpandedId(isExpanded ? null : provision.id)} className="w-full flex items-center justify-between p-6 hover:bg-gray-50/50 dark:hover:bg-navy-900/50 transition-colors text-left">
+                    <div className="flex items-center gap-4">
+                      {isExpanded ? <ChevronDown size={18} className="text-gold-500"/> : <ChevronRight size={18} className="text-gray-400"/>}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black text-navy-600 dark:text-gold-400 bg-navy-50 dark:bg-navy-900/50 px-2 py-1 rounded uppercase tracking-widest">{getAbbreviation(provision.book)}</span>
+                          <h3 className="font-black text-navy-900 dark:text-white text-sm tracking-tight">{provision.articleNumber}</h3>
+                        </div>
+                        {provision.title && <p className="text-xs text-gray-500 font-medium mt-1 truncate">— {provision.title}</p>}
+                      </div>
+                    </div>
+                    {isExpanded && <Sparkles className="text-gold-500 animate-pulse" size={18} />}
+                  </button>
+
+                  {isExpanded && (
+                    <div className="flex flex-col lg:flex-row border-t border-gray-100 dark:border-navy-800 bg-white dark:bg-navy-950 animate-fade-in relative">
+                      
+                      {/* 🟢 LEFT SIDE: CODAL TEXT & ARTICLE LEVEL NOTES */}
+                      <div className="flex-1 p-8 border-r border-gray-100 dark:border-navy-800/50">
+                        
+                        {/* 🟢 CONTEXT BREADCRUMB IN EXPANDED VIEW */}
+                        <div className="mb-6 p-4 bg-gray-50 dark:bg-navy-900/30 rounded-xl border border-gray-100 dark:border-navy-800 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                           <span className="text-navy-900 dark:text-gray-200">{provision.book}</span>
+                           {provision.bookPart && <><span><ChevronRight size={12}/></span><span className="text-gray-600 dark:text-gray-400">{provision.bookPart}</span></>}
+                           {provision.titlePart && <><span><ChevronRight size={12}/></span><span className="text-gray-600 dark:text-gray-400">{provision.titlePart}</span></>}
+                           {provision.chapter && <><span><ChevronRight size={12}/></span><span className="text-gray-600 dark:text-gray-400">{provision.chapter}</span></>}
+                        </div>
+
+                        <div className="flex items-center gap-2 mb-6 text-navy-900 dark:text-white opacity-60">
+                          <FileText size={16} />
+                          <span className="text-[10px] font-black uppercase tracking-widest">Codal Text</span>
+                        </div>
+                        {renderStructuredContent(provision.id, provision.content)}
+                        
+                        <div className="mt-8 pt-8 border-t-2 border-dashed border-gray-100 dark:border-navy-800">
+                          <div className="flex items-center gap-2 mb-4">
+                            <Library size={16} className="text-gold-500" />
+                            <span className="text-xs font-black uppercase tracking-widest text-navy-900 dark:text-white">General Article Annotations</span>
+                          </div>
+                          {renderInteractionZone(provision.id)}
+                        </div>
+                      </div>
+
+                      <div className="w-full lg:w-[420px] bg-navy-50/20 dark:bg-navy-900/10 p-8">
+                        {sidePanelContent?.provisionId === provision.id ? (
+                          <div className="animate-fade-in space-y-4">
+                            <button 
+                              onClick={() => setSidePanelContent(null)} 
+                              className="text-xs font-bold flex items-center gap-2 text-gray-500 hover:text-navy-900 bg-white border border-gray-200 px-3 py-2 rounded-lg shadow-sm"
+                            >
+                              <ArrowLeft size={14} /> Back to Analysis & Links
+                            </button>
+                            
+                            {sidePanelContent.type === 'case' && (
+                              <div className="bg-white dark:bg-navy-900 p-6 rounded-2xl shadow-sm border border-gold-200 max-h-[600px] overflow-y-auto custom-scrollbar">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">{sidePanelContent.data.grNo}</div>
+                                <h3 className="font-bold text-navy-900 dark:text-white leading-snug mb-4">{sidePanelContent.data.title}</h3>
+                                <div className="space-y-4 text-xs text-gray-700 dark:text-gray-300">
+                                   <div><strong className="text-gold-600">Facts:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.facts}</span></div>
+                                   <div><strong className="text-gold-600">Issues:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.issues}</span></div>
+                                   <div className="p-3 bg-navy-50 dark:bg-navy-950 rounded border-l-2 border-navy-900"><strong className="text-navy-900 dark:text-gold-400">Ruling:</strong><br/> <span className="whitespace-pre-wrap">{sidePanelContent.data.ratio}</span></div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                        ) : (
+                          <div className="space-y-8 animate-fade-in">
+                            <div className="space-y-4">
+                                {!savedAnalysis ? (
+                                    <button 
+                                        onClick={() => handleAIDeconstruct(provision)}
+                                        disabled={!!isAnalyzing}
+                                        className="w-full py-4 bg-navy-950 dark:bg-gold-500 text-white dark:text-navy-950 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:opacity-50 transition-all"
+                                    >
+                                        {isAnalyzing === provision.id ? <Loader2 className="animate-spin" size={16}/> : <Sparkles size={16} />}
+                                        {isAnalyzing === provision.id ? "Processing Logic..." : "Initialize AI Deconstruction"}
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-gold-500 pb-2 border-b border-gold-200/30">
+                                        <ShieldCheck size={16} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">
+                                            {provision.aiAnalysis ? "Verified Admin Insight" : "Personal AI Analysis Secured"}
+                                        </span>
+                                    </div>
+                                )}
+                                
+                                {savedAnalysis && (
+                                    <div className="p-6 bg-white dark:bg-navy-900 rounded-3xl border border-gold-200/50 dark:border-navy-800 text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-64 overflow-y-auto custom-scrollbar shadow-inner text-left">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{savedAnalysis}</ReactMarkdown>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="pt-2 border-t border-gray-100 dark:border-navy-800/50">
+                                <button 
+                                  onClick={() => setShowLinkedCases(prev => ({...prev, [provision.id]: !prev[provision.id]}))} 
+                                  className="w-full flex justify-between items-center py-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-navy-600 transition-colors"
+                                >
+                                    <span className="flex items-center gap-2"><Gavel size={14} className="text-blue-500" /> Linked Jurisprudence ({currentCrossRefs.linkedCases.length})</span>
+                                    <ChevronDown size={14} className={cn("transition-transform", showLinkedCases[provision.id] && "rotate-180")} />
+                                </button>
+                                
+                                {showLinkedCases[provision.id] && (
+                                  <div className="mt-3 space-y-3 animate-fade-in">
+                                      {currentCrossRefs.linkedCases.map((c: any) => (
+                                          <div key={c.id} onClick={() => setSidePanelContent({ provisionId: provision.id, type: 'case', data: c })} className="p-4 bg-white dark:bg-navy-900 border border-gray-100 dark:border-navy-800 rounded-2xl hover:border-blue-500 cursor-pointer shadow-sm transition-all group text-left">
+                                              <p className="text-[11px] font-bold text-navy-900 dark:text-gray-200 truncate group-hover:text-blue-600">{c.title}</p>
+                                              <p className="text-[9px] text-gray-400 mt-1 font-bold uppercase tracking-wider">{c.grNo}</p>
+                                          </div>
+                                      ))}
+                                      {currentCrossRefs.linkedCases.length === 0 && <p className="text-[10px] italic text-gray-400 text-left px-2">No library matches found.</p>}
+                                  </div>
+                                )}
+                            </div>
+
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
             );
           })}
 

@@ -11,7 +11,7 @@ export const PLAN_LIMITS = {
     noteSubnotes: 10,
     casesDaily: 5,
     casesMonthly: 30,
-    practiceDaily: 5 // 🟢 AMENDED: Fixed to 5
+    practiceDaily: 5 
   },
   premium: {
     chatDaily: Infinity,
@@ -21,7 +21,7 @@ export const PLAN_LIMITS = {
     noteSubnotes: 150, 
     casesDaily: 50,
     casesMonthly: 300,
-    practiceDaily: 20 // 🟢 AMENDED: Fixed to 20
+    practiceDaily: 20 
   },
   premium_plus: {
     chatDaily: Infinity,
@@ -52,6 +52,7 @@ export interface UserUsage {
   dailyPracticeCount: number;
   lastResetDate: string;        // Format: "2026-04-03"
   lastMonthlyResetDate: string; // Format: "2026-04"
+  successfulReferrals?: number; // 🟢 NEW: Tracks how many paid users they referred
 }
 
 export interface User {
@@ -66,6 +67,9 @@ export interface User {
   isActive: boolean;
   profile?: UserProfile;
   usage: UserUsage; 
+  referralCode?: string;      // 🟢 NEW: Their unique 6-character code
+  referredBy?: string;        // 🟢 NEW: The code of the blockmate who invited them
+  hasActiveDiscount?: boolean;// 🟢 NEW: Flags if they are owed 25% off
 }
 
 export interface BarQuestion {
@@ -121,6 +125,9 @@ export interface CaseDigest {
 export interface CodalProvision {
   id: string;
   book: string;          
+  bookPart?: string;     // 🟢 NEW: e.g., Book II: Property
+  titlePart?: string;    // 🟢 NEW: e.g., Title I: Classification
+  chapter?: string;      // 🟢 NEW: e.g., Chapter 1: Immovable Property
   articleNumber: string; 
   title: string;
   content: string;

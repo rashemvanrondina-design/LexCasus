@@ -30,9 +30,12 @@ const BillingPage: React.FC = () => {
   const premiumPrice = hasDiscount ? '126.75' : '169.00';
   const premiumPlusPrice = hasDiscount ? '374.25' : '499.00';
 
-  // 🟢 DYNAMIC REAL-TIME DATES
+  // 🟢 DYNAMIC REAL-TIME DATES & INVOICE FIX
   const today = new Date();
-  const formattedToday = today.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  
+  const accountCreatedDate = user?.createdAt 
+    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) 
+    : today.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
   const formattedNextBilling = nextMonth.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
@@ -42,14 +45,14 @@ const BillingPage: React.FC = () => {
   // 🟢 PAYMENT MODAL STATES
   const [paymentModalData, setPaymentModalData] = useState<{ isOpen: boolean, plan: 'premium' | 'premium_plus' | null }>({ isOpen: false, plan: null });
   const [copied, setCopied] = useState(false);
-  const [referralCopied, setReferralCopied] = useState(false); // For the referral code
+  const [referralCopied, setReferralCopied] = useState(false); 
 
-  // 🟢 PROMO PRICING REFLECTED IN HISTORY
+  // 🟢 ACCURATE INVOICE HISTORY
   const billingHistory = isPremiumPlus 
-    ? [{ date: formattedToday, amount: '₱499.00', status: 'Paid', plan: 'Premium+' }] 
+    ? [{ date: accountCreatedDate, amount: `₱${premiumPlusPrice}`, status: 'Paid', plan: 'Premium+' }] 
     : isPremium 
-      ? [{ date: formattedToday, amount: '₱169.00', status: 'Paid', plan: 'Premium' }]
-      : [{ date: formattedToday, amount: '₱0.00', status: 'Paid', plan: 'Free' }];
+      ? [{ date: accountCreatedDate, amount: `₱${premiumPrice}`, status: 'Paid', plan: 'Premium' }]
+      : [{ date: accountCreatedDate, amount: '₱0.00', status: 'Paid', plan: 'Free' }];
 
   // 🟢 EMAIL HANDLERS
   const handleCopyEmail = () => {
@@ -197,7 +200,7 @@ const BillingPage: React.FC = () => {
           </p>
         </div>
 
-        {/* 🟢 THE REFERRAL CARD (Added Here!) */}
+        {/* 🟢 THE REFERRAL CARD */}
         <div className="p-6 bg-gradient-to-br from-navy-900 to-[#0A0F1D] rounded-3xl border border-navy-700 text-white shadow-2xl relative overflow-hidden group">
           <div className="absolute -right-6 -bottom-6 opacity-10 group-hover:scale-110 transition-transform duration-700">
             <Users size={180} />
@@ -335,7 +338,7 @@ const BillingPage: React.FC = () => {
             {/* 🟢 PROMO & DISCOUNT PRICING */}
             <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
               <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
-                {hasDiscount ? '₱169' : '₱199'}
+                {hasDiscount ? '₱199' : '₱199'}
               </span>
               <span className="text-4xl font-black text-gold-600 dark:text-gold-400 leading-none">
                 ₱{premiumPrice}
@@ -381,7 +384,7 @@ const BillingPage: React.FC = () => {
             {/* 🟢 PROMO & DISCOUNT PRICING */}
             <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
               <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
-                {hasDiscount ? '₱499' : '₱599'}
+                {hasDiscount ? '₱599' : '₱599'}
               </span>
               <span className="text-4xl font-black text-purple-600 dark:text-purple-400 leading-none">
                 ₱{premiumPlusPrice}

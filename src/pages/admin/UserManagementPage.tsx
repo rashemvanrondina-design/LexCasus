@@ -4,11 +4,11 @@ import type { User } from '../../types';
 import { cn, getInitials } from '../../lib/utils';
 import {
   Search, Crown, Shield, UserCheck, 
-  UserX, Loader2, Trash2, Diamond
+  UserX, Loader2, Trash2, Diamond, Sparkles
 } from 'lucide-react';
 
 const UserManagementPage: React.FC = () => {
-  // 🟢 1. Destructure Live Actions and State (Added deleteUserRecord)
+  // 🟢 1. Destructure Live Actions and State
   const { users, loading, fetchAdminStats, updateUserSubscription, toggleUserStatus, deleteUserRecord } = useAdminStore();
   const [search, setSearch] = useState('');
   const [planFilter, setPlanFilter] = useState('all');
@@ -29,7 +29,8 @@ const UserManagementPage: React.FC = () => {
   const filteredUsers = users.filter(u => {
     const matchSearch = search === '' ||
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase());
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      (u as any).referralCode?.toLowerCase().includes(search.toLowerCase()); // 🟢 Allow searching by referral code!
     const matchPlan = planFilter === 'all' || u.subscription === planFilter;
     return matchSearch && matchPlan;
   });
@@ -78,11 +79,10 @@ const UserManagementPage: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search by name or email..." className="input-field pl-10"
+            placeholder="Search by name, email, or referral code..." className="input-field pl-10"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {/* 🟢 Updated to match the new 3-tier system */}
           {['all', 'free', 'premium', 'premium_plus'].map(plan => (
             <button
               key={plan} onClick={() => setPlanFilter(plan)}
@@ -105,6 +105,8 @@ const UserManagementPage: React.FC = () => {
               <tr className="border-b border-gray-200 dark:border-navy-800 bg-gray-50 dark:bg-navy-900/50">
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">User</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Plan</th>
+                {/* 🟢 NEW REFERRAL HEADER */}
+                <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Referral Info</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Status</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Joined</th>
                 <th className="text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Actions</th>
@@ -113,7 +115,7 @@ const UserManagementPage: React.FC = () => {
             <tbody className="divide-y divide-gray-200 dark:divide-navy-800">
               {displayedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-gray-500 italic">No attorneys found matching the criteria.</td>
+                  <td colSpan={6} className="py-10 text-center text-gray-500 italic">No attorneys found matching the criteria.</td>
                 </tr>
               ) : (
                 displayedUsers.map(user => (
@@ -130,7 +132,6 @@ const UserManagementPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-5 py-4">
-                      {/* 🟢 Updated Badge Rendering */}
                       <span className={cn(
                         'badge', 
                         user.subscription === 'premium_plus' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' :
@@ -143,6 +144,26 @@ const UserManagementPage: React.FC = () => {
                         {user.subscription.replace('_', '+ ')}
                       </span>
                     </td>
+                    
+                    {/* 🟢 NEW REFERRAL CELL */}
+                    <td className="px-5 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-gray-600 dark:text-gray-300">
+                          Code: <strong className="text-gold-600 dark:text-gold-400 tracking-widest">{(user as any).referralCode || 'N/A'}</strong>
+                        </span>
+                        {(user as any).referredBy && (
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                            Referred By: <span className="font-mono bg-gray-200 dark:bg-navy-800 px-1 py-0.5 rounded">{(user as any).referredBy}</span>
+                          </span>
+                        )}
+                        {(user as any).hasActiveDiscount && (
+                          <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                            <Sparkles size={10} /> Discount Active
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
                     <td className="px-5 py-4">
                       <span className={cn('badge', user.isActive ? 'badge-green' : 'badge-red')}>
                         {user.isActive ? 'Active' : 'Inactive'}
@@ -153,7 +174,6 @@ const UserManagementPage: React.FC = () => {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* 🟢 Updated Dropdown Options */}
                         <select
                           value={user.subscription}
                           onChange={e => updateUserSubscription(user.id, e.target.value as any)}
@@ -170,7 +190,6 @@ const UserManagementPage: React.FC = () => {
                         >
                           {user.isActive ? <UserX size={16} /> : <UserCheck size={16} />}
                         </button>
-                        {/* 🟢 The New Delete Button */}
                         <button
                           title="Permanently Delete Database Record"
                           onClick={() => handleDeleteUser(user.id, user.name)}
@@ -188,7 +207,6 @@ const UserManagementPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 🟢 LOAD MORE BUTTON */}
       {visibleCount < filteredUsers.length && (
         <div className="flex justify-center pt-2">
           <button

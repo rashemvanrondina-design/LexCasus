@@ -35,7 +35,7 @@ interface CodalsState {
 
   // 🟢 CLIENT/RESEARCH FUNCTIONS
   savePrivateNote: (
-    codalId: string,
+    codalId: string, // This now acts as our universal Target ID (handles AI & Section notes)
     userId: string,
     content: string,
     linkedCases: string[],
@@ -55,12 +55,10 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
 
   // 1. Fetch Global Codals (The Public Library)
   fetchCodals: async () => {
-    // 🟢 THE BYPASS: If checked once, do not check again!
     if (get().hasFetchedCodals) return;
     
     set({ loading: true });
     try {
-      // Added orderBy to keep your library organized
       const q = query(collection(db, 'codals'), orderBy('createdAt', 'asc'));
       const snap = await getDocs(q);
       
@@ -78,7 +76,6 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
 
   // 2. Fetch User-Specific Notes (The Private Vault)
   fetchUserNotes: async (userId: string) => {
-    // 🟢 THE BYPASS: Prevents fetching notes repeatedly on navigation
     if (get().hasFetchedNotes) return;
 
     try {
@@ -88,10 +85,14 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
       
       snap.forEach(doc => {
         const data = doc.data();
-        notesMap[data.codalId] = { 
-          content: data.content, 
+        
+        // 🟢 THE FIX: Safely map legacy IDs, composite AI IDs, and standard Codal IDs
+        const key = data.targetId || data.codalId || doc.id;
+        
+        notesMap[key] = { 
+          content: data.content || '', 
           cases: data.linkedCases || [], 
-          type: data.type 
+          type: data.type || 'codal_annotation'
         };
       });
       
@@ -123,7 +124,7 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
   // 4. Admin: Update Provision
   updateCodal: async (id: string, updatedData: Partial<CodalProvision>) => {
     try {
-      const { id: _, ...cleanUpdateData } = updatedData; // Strips out the ID just to be safe
+      const { id: _, ...cleanUpdateData } = updatedData;
 
       const docRef = doc(db, 'codals', id);
       const finalData = {
@@ -160,6 +161,7 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
     try {
       const notesRef = collection(db, 'codal_notes');
 
+      // We query using the universal codalId (which safely handles 'ProvisionID::AI_ANALYSIS' too)
       const q = query(
         notesRef,
         where('codalId', '==', codalId),
@@ -219,7 +221,6 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
 
       await batch.commit();
       
-      // We force a refetch from Firebase because the admin just pushed massive changes
       set({ hasFetchedCodals: false }); 
       await get().fetchCodals();
       
@@ -232,8 +233,6 @@ export const useCodalsStore = create<CodalsState>((set, get) => ({
     }
   },
 
-  // 🟢 8. PREVENT DATA LEAKS
-  // Clears out the user's private notes when they sign out. 
-  // Notice we DO NOT clear the 'codals' array, because the actual laws are public to all users!
+  // 8. Prevent Data Leaks on Logout
   clearUserNotes: () => set({ userNotes: {}, hasFetchedNotes: false }),
 }));

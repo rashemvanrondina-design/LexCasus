@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import ReactMarkdown from 'react-markdown';
 import {
   BookOpen, Plus, Edit3, Trash2, X, Search, 
-  ChevronDown, ChevronRight, Loader2, Info, Copy, Check, Eye
+  ChevronDown, ChevronRight, Loader2, Info, Copy, Check, Eye, Layers
 } from 'lucide-react';
 
 import BulkImportCodals from '../../components/admin/BulkImportCodals';
@@ -31,29 +31,28 @@ const ManageCodalsPage: React.FC = () => {
   const [copyId, setCopyId] = useState<string | null>(null);
   const [isPreview, setIsPreview] = useState(false);
 
-  // 🟢 RESTORED: Form State
+  // 🟢 UPGRADED: Added Structural Hierarchy Fields
   const [form, setForm] = useState({
-    book: '',
-    title: '',
+    book: '', // The Code Name (e.g., Civil Code)
+    bookPart: '', // e.g., Book II: Property
+    titlePart: '', // e.g., Title I: Classification
+    chapter: '', // e.g., Chapter 1: Immovable Property
     articleNumber: '',
+    title: '', // Article specific title
     content: '',
   });
 
-  // 🟢 NEW: BULK SELECTION STATE
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
-
-  // 🟢 NEW: PAGINATION / CHUNKING STATE
   const [visibleCount, setVisibleCount] = useState(20);
 
   useEffect(() => {
     fetchCodals();
   }, [fetchCodals]);
 
-  // Clear selections and reset visible count if you change tabs or search terms
   useEffect(() => {
     setSelectedIds(new Set());
-    setVisibleCount(20); // 🟢 Reset to 20 when searching or switching categories
+    setVisibleCount(20); 
   }, [search, selectedCode]);
 
   const filteredCodals = codals.filter((c) => {
@@ -62,22 +61,17 @@ const ManageCodalsPage: React.FC = () => {
       search === '' ||
       c.content.toLowerCase().includes(search.toLowerCase()) ||
       c.articleNumber.toLowerCase().includes(search.toLowerCase()) ||
-      (c.title || '').toLowerCase().includes(search.toLowerCase());
+      (c.title || '').toLowerCase().includes(search.toLowerCase()) ||
+      ((c as any).bookPart || '').toLowerCase().includes(search.toLowerCase());
     return matchCode && matchSearch;
   });
 
-  // 🟢 SLICE THE DATA FOR RENDER
   const displayedCodals = filteredCodals.slice(0, visibleCount);
-
   const books = ['all', ...Array.from(new Set(codals.map((c) => c.book)))];
 
-  // 🟢 BULK ACTIONS LOGIC
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedIds(new Set(filteredCodals.map(c => c.id)));
-    } else {
-      setSelectedIds(new Set());
-    }
+    if (e.target.checked) setSelectedIds(new Set(filteredCodals.map(c => c.id)));
+    else setSelectedIds(new Set());
   };
 
   const handleSelectOne = (id: string) => {
@@ -110,15 +104,18 @@ const ManageCodalsPage: React.FC = () => {
   };
 
   const handleAdd = async () => {
-    if (!form.book || !form.articleNumber) return alert("Book and Article Number are required.");
+    if (!form.book || !form.articleNumber) return alert("Code Name and Article Number are required.");
     await addCodal({
       book: form.book,
+      bookPart: form.bookPart, // 🟢 New
+      titlePart: form.titlePart, // 🟢 New
+      chapter: form.chapter, // 🟢 New
       title: form.title,
       articleNumber: form.articleNumber,
       content: form.content,
       notes: '',
       linkedCases: [],
-    });
+    } as any);
     resetForm();
   };
 
@@ -126,10 +123,13 @@ const ManageCodalsPage: React.FC = () => {
     if (!editingCodal) return;
     await updateCodal(editingCodal.id, {
       book: form.book,
+      bookPart: form.bookPart, // 🟢 New
+      titlePart: form.titlePart, // 🟢 New
+      chapter: form.chapter, // 🟢 New
       title: form.title,
       articleNumber: form.articleNumber,
       content: form.content,
-    });
+    } as any);
     resetForm();
   };
 
@@ -142,13 +142,16 @@ const ManageCodalsPage: React.FC = () => {
     setShowModal(false);
     setEditingCodal(null);
     setIsPreview(false);
-    setForm({ book: '', title: '', articleNumber: '', content: '' });
+    setForm({ book: '', bookPart: '', titlePart: '', chapter: '', title: '', articleNumber: '', content: '' });
   };
 
-  const openEdit = (codal: CodalProvision) => {
+  const openEdit = (codal: any) => {
     setEditingCodal(codal);
     setForm({
       book: codal.book,
+      bookPart: codal.bookPart || '',
+      titlePart: codal.titlePart || '',
+      chapter: codal.chapter || '',
       title: codal.title || '',
       articleNumber: codal.articleNumber,
       content: codal.content,
@@ -161,7 +164,7 @@ const ManageCodalsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-tight">Manage E-Codals</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Publish global laws visible to all clients</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Publish global laws with hierarchical tagging</p>
         </div>
         
         <div className="flex items-center gap-3">
@@ -193,11 +196,11 @@ const ManageCodalsPage: React.FC = () => {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search articles, keywords, or titles..." className="input-field pl-10 py-3"
+          placeholder="Search articles, structure, or keywords..." className="input-field pl-10 py-3"
         />
       </div>
 
-      {/* 🟢 BULK ACTION TOOLBAR */}
+      {/* BULK ACTION TOOLBAR */}
       {filteredCodals.length > 0 && (
         <div className="flex items-center justify-between bg-white dark:bg-navy-900 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-navy-800 animate-fade-in">
           <label className="flex items-center gap-3 cursor-pointer pl-2">
@@ -233,8 +236,7 @@ const ManageCodalsPage: React.FC = () => {
           <div className="card p-12 text-center text-gray-400 italic">No provisions found.</div>
         ) : (
           <>
-            {/* 🟢 RENDER ONLY THE CHUNKED ITEMS */}
-            {displayedCodals.map((codal) => (
+            {displayedCodals.map((codal: any) => (
               <div 
                 key={codal.id} 
                 className={cn(
@@ -264,7 +266,15 @@ const ManageCodalsPage: React.FC = () => {
                           <span className="badge-navy text-[10px]">{codal.book}</span>
                           <span className="text-sm font-bold text-navy-900 dark:text-white">{codal.articleNumber}</span>
                         </div>
-                        {codal.title && <p className="text-xs text-gray-500 font-medium truncate">— {codal.title}</p>}
+                        {/* 🟢 Breadcrumb Preview */}
+                        {(codal.bookPart || codal.titlePart) ? (
+                           <p className="text-[10px] text-gray-500 font-medium truncate mt-0.5 flex items-center gap-1 opacity-70">
+                              <Layers size={10} /> 
+                              {[codal.bookPart, codal.titlePart, codal.chapter].filter(Boolean).join(" > ")}
+                           </p>
+                        ) : (
+                           codal.title && <p className="text-xs text-gray-500 font-medium truncate mt-0.5">— {codal.title}</p>
+                        )}
                       </div>
                     </button>
                   </div>
@@ -287,6 +297,15 @@ const ManageCodalsPage: React.FC = () => {
                 
                 {expandedId === codal.id && (
                   <div className="border-t border-gray-100 dark:border-navy-800 p-6 bg-gray-50/30 dark:bg-navy-950/20 animate-fade-in">
+                    {/* 🟢 Full Breadcrumb inside expanded view */}
+                    {(codal.bookPart || codal.titlePart || codal.chapter) && (
+                      <div className="mb-4 p-3 bg-white dark:bg-navy-900 border border-gray-200 dark:border-navy-700 rounded-lg text-xs font-mono text-gray-500 flex flex-wrap gap-2 items-center">
+                        <span className="font-bold text-navy-700 dark:text-navy-300">{codal.book}</span>
+                        {codal.bookPart && <><span>/</span><span>{codal.bookPart}</span></>}
+                        {codal.titlePart && <><span>/</span><span>{codal.titlePart}</span></>}
+                        {codal.chapter && <><span>/</span><span>{codal.chapter}</span></>}
+                      </div>
+                    )}
                     <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {codal.content}
@@ -297,7 +316,6 @@ const ManageCodalsPage: React.FC = () => {
               </div>
             ))}
 
-            {/* 🟢 LOAD MORE BUTTON */}
             {visibleCount < filteredCodals.length && (
               <div className="flex justify-center pt-4 pb-2">
                 <button
@@ -337,20 +355,33 @@ const ManageCodalsPage: React.FC = () => {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 ml-1">Law Category</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 ml-1">Code Name</label>
                       <select value={form.book} onChange={(e) => setForm({...form, book: e.target.value})} className="input-field">
-                        <option value="">Select Law Book...</option>
+                        <option value="">Select Law Code...</option>
                         {codeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 ml-1">Article Identifier</label>
-                      <input type="text" value={form.articleNumber} onChange={(e) => setForm({...form, articleNumber: e.target.value})} placeholder="e.g. Art. 1" className="input-field" />
+                      <input type="text" value={form.articleNumber} onChange={(e) => setForm({...form, articleNumber: e.target.value})} placeholder="e.g. Art. 414" className="input-field" />
                     </div>
                   </div>
                   
+                  {/* 🟢 NEW STRUCTURAL HIERARCHY BLOCK */}
+                  <div className="p-4 bg-gray-50 dark:bg-navy-950 rounded-xl border border-gray-100 dark:border-navy-800 space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                       <Layers size={14} className="text-gold-500" />
+                       <label className="text-[10px] font-bold uppercase tracking-wider text-navy-900 dark:text-gray-300">Hierarchical Structure (Optional)</label>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <input type="text" placeholder="e.g. Book II: Property" value={form.bookPart} onChange={e => setForm({...form, bookPart: e.target.value})} className="input-field text-xs bg-white dark:bg-navy-900" />
+                      <input type="text" placeholder="e.g. Title I: Classification" value={form.titlePart} onChange={e => setForm({...form, titlePart: e.target.value})} className="input-field text-xs bg-white dark:bg-navy-900" />
+                      <input type="text" placeholder="e.g. Chapter 1: Immovable" value={form.chapter} onChange={e => setForm({...form, chapter: e.target.value})} className="input-field text-xs bg-white dark:bg-navy-900" />
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 ml-1">Title (Optional)</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 ml-1">Specific Title (Optional)</label>
                     <input type="text" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} placeholder="e.g. National Territory" className="input-field" />
                   </div>
                   
@@ -360,7 +391,7 @@ const ManageCodalsPage: React.FC = () => {
                       value={form.content} 
                       onChange={(e) => setForm({...form, content: e.target.value})} 
                       placeholder="Paste the full text of the article here..." 
-                      rows={10} 
+                      rows={8} 
                       className="input-field font-mono text-sm resize-y" 
                     />
                     <div className="flex items-center gap-2 px-2 text-[10px] text-gray-500 font-medium">
@@ -372,7 +403,17 @@ const ManageCodalsPage: React.FC = () => {
               ) : (
                 <div className="space-y-4">
                   <div className="pb-4 border-b border-gray-100 dark:border-navy-800">
-                    <span className="badge-navy mb-2 inline-block">{form.book || 'No Book Selected'}</span>
+                    <span className="badge-navy mb-2 inline-block">{form.book || 'No Code Selected'}</span>
+                    
+                    {/* Preview Breadcrumb */}
+                    {(form.bookPart || form.titlePart || form.chapter) && (
+                      <p className="text-xs text-gray-500 mb-2 font-mono flex gap-1 flex-wrap">
+                        {form.bookPart && <span>{form.bookPart} /</span>}
+                        {form.titlePart && <span>{form.titlePart} /</span>}
+                        {form.chapter && <span>{form.chapter}</span>}
+                      </p>
+                    )}
+
                     <h4 className="text-lg font-bold text-navy-900 dark:text-white">{form.articleNumber} {form.title && `— ${form.title}`}</h4>
                   </div>
                   <div className="prose prose-sm dark:prose-invert max-w-none min-h-[300px] p-4 bg-gray-50/50 dark:bg-navy-950/20 rounded-xl overflow-y-auto">

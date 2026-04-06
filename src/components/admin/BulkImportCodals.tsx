@@ -40,9 +40,17 @@ const BulkImportCodals: React.FC = () => {
         const articleMatch = block.match(/ARTICLE:\s*(.+)/i);
         const titleMatch = block.match(/TITLE:\s*(.+)/i);
         
+        // 🟢 NEW: Hierarchical Extractors
+        const bookPartMatch = block.match(/BOOK_PART:\s*(.+)/i);
+        const titlePartMatch = block.match(/TITLE_PART:\s*(.+)/i);
+        const chapterMatch = block.match(/CHAPTER:\s*(.+)/i);
+        
         if (bookMatch && articleMatch) {
           // Clean the content box AND remove any leftover stars so they don't show up in the app
           let rawContent = block
+            .replace(/BOOK_PART:\s*.+/i, '')  // Replace these first so it doesn't conflict with BOOK:
+            .replace(/TITLE_PART:\s*.+/i, '')
+            .replace(/CHAPTER:\s*.+/i, '')
             .replace(/BOOK:\s*.+/i, '')
             .replace(/ARTICLE:\s*.+/i, '')
             .replace(/TITLE:\s*.+/i, '')
@@ -54,6 +62,9 @@ const BulkImportCodals: React.FC = () => {
           if (rawContent) {
             parsedProvisions.push({
               book: bookMatch[1].trim(),
+              bookPart: bookPartMatch ? bookPartMatch[1].trim() : "",   // 🟢 Added
+              titlePart: titlePartMatch ? titlePartMatch[1].trim() : "", // 🟢 Added
+              chapter: chapterMatch ? chapterMatch[1].trim() : "",       // 🟢 Added
               articleNumber: articleMatch[1].trim(),
               title: titleMatch ? titleMatch[1].trim() : "",
               content: rawContent
