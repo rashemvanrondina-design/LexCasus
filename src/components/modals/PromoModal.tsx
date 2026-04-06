@@ -29,7 +29,13 @@ const PromoModal: React.FC = () => {
       return;
     }
 
+    // 🟢 THE FIX: Check the lock
     if (sessionActiveUser !== user.id) {
+      // 🟢 THE FIX: Lock the gate IMMEDIATELY before any async delays!
+      sessionActiveUser = user.id; 
+
+      let timeoutId: NodeJS.Timeout;
+
       const initializeModal = async () => {
         let settings = null;
 
@@ -45,8 +51,7 @@ const PromoModal: React.FC = () => {
         }
 
         if (settings?.isActive === false) {
-          sessionActiveUser = user.id; 
-          return;
+          return; // Gate is already locked above, just exit gracefully
         }
 
         let nextType = localStorage.getItem('lexcasus_modal_rotation') as 'promo' | 'whats_coming' || 'promo';
@@ -57,9 +62,8 @@ const PromoModal: React.FC = () => {
 
         setModalType(nextType);
 
-        const timer = setTimeout(() => {
+        timeoutId = setTimeout(() => {
           setIsOpen(true);
-          sessionActiveUser = user.id; 
 
           if (user.subscription !== 'premium_plus') {
             const subsequentType = nextType === 'promo' ? 'whats_coming' : 'promo';
@@ -69,6 +73,11 @@ const PromoModal: React.FC = () => {
       };
 
       initializeModal();
+
+      // Cleanup function to clear timeouts if React unmounts
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+      };
     }
   }, [user]);
 
