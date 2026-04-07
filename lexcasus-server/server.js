@@ -17,8 +17,9 @@ console.log("🔑  Checking Credentials...");
 console.log("- Gemini Key:", process.env.GEMINI_API_KEY ? "✅ LOADED" : "❌ MISSING");
 console.log("- Supabase URL:", process.env.SUPABASE_URL ? "✅ LOADED" : "❌ MISSING");
 
-// 🟢 CONFIGURATION: AI & DATABASE (INITIALIZED ONLY ONCE)
+// 🟢 CONFIGURATION: AI & DATABASE
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Note: If 'gemini-2.5-flash' throws a 500 error later, change this to 'gemini-1.5-flash'
 const MODEL_NAME = "gemini-2.5-flash"; 
 
 const supabase = createClient(
@@ -37,7 +38,6 @@ const normalizeGR = (raw) => raw.replace(/[^\w.\-,\s]/g, '').trim();
 function getSmartContext(text) {
   const MAX_LEN = 40000; 
   if (text.length <= MAX_LEN) return text;
-  // Slicing Head (Facts) and Tail (Ruling) to maximize accuracy within context limits
   return `${text.slice(0, 18000)}\n\n[...TECHNICAL PROCEEDINGS TRUNCATED...]\n\n${text.slice(-18000)}`;
 }
 
@@ -55,22 +55,16 @@ async function scrapeFullText(url) {
     const { data } = await axios.get(url, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
     const $ = cheerio.load(data);
     
-    // 1. Remove background junk
     $('script, style, nav, footer, iframe').remove(); 
-    
-    // 2. Convert HTML line breaks to actual text line breaks
     $('br').replaceWith('\n');
     $('p').prepend('\n\n');
     
-    // 3. Grab text and clean up excessive spaces, but KEEP newlines
     let rawText = $('body').text();
     rawText = rawText.replace(/[ \t]+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
 
-    // 4. 🕵️‍♂️ DIRECT EXTRACTION: Find the bracketed header!
     const headerMatch = rawText.match(/\[(.*?)\]/);
     const exactHeader = headerMatch ? headerMatch[0] : "Header brackets not found";
 
-    // 5. Force-feed the header to the AI
     return `CRITICAL METADATA (Contains Date): ${exactHeader}\n\nFULL TEXT:\n${rawText}`;
   } catch (e) { 
     return ""; 
@@ -78,9 +72,15 @@ async function scrapeFullText(url) {
 }
 
 // ============================================================
+// 🩺 HEALTH CHECK (Test if Render is awake)
+// ============================================================
+app.get('/api/health', (req, res) => {
+  res.json({ status: "🟢 The Chambers are Open", time: new Date().toISOString() });
+});
+
+// ============================================================
 // 🕵️‍♂️ PHASE 1: DISCOVERY LAYER (FETCH SEARCH CARDS)
 // ============================================================
-
 app.post('/api/search', async (req, res) => {
   const { query } = req.body;
   const normalized = normalizeGR(query);
@@ -90,7 +90,7 @@ app.post('/api/search', async (req, res) => {
     const data = JSON.stringify({
       "q": `site:lawphil.net OR site:chanrobles.com OR site:elibrary.judiciary.gov.ph "${normalized}" OR "${digitsOnly}"`,
       "gl": "ph",
-      "num": 3 // Top 3 choices for the dropdown
+      "num": 3 
     });
 
     const response = await axios.post('https://google.serper.dev/search', data, {
@@ -99,7 +99,6 @@ app.post('/api/search', async (req, res) => {
 
     const results = response.data.organic || [];
 
-    // Map into the requested JSON Schema for the Frontend Cards
     const formattedResults = results.map(r => {
       let sourceName = "Philippine Supreme Court";
       if (r.link.includes('lawphil')) sourceName = "Lawphil";
@@ -111,19 +110,12 @@ app.post('/api/search', async (req, res) => {
         dateDecided: "Extracted on Digest", 
         source: sourceName,
         summary: r.snippet,
-        metadata: {
-          citation: r.title,
-          fullDate: "Pending Scrape"
-        },
-        links: {
-          viewSource: r.link,
-          importAction: true
-        }
+        metadata: { citation: r.title, fullDate: "Pending Scrape" },
+        links: { viewSource: r.link, importAction: true }
       };
     });
 
     res.json({ searchResults: formattedResults });
-
   } catch (err) {
     console.error("❌ Search Error:", err.message);
     res.status(500).json({ error: "Search Failed" });
@@ -133,15 +125,13 @@ app.post('/api/search', async (req, res) => {
 // ============================================================
 // ⚖️ PHASE 2: GENERATE CASE DIGEST
 // ============================================================
-
 app.post('/api/digest', async (req, res) => {
   const { query, url, focus } = req.body;
   const normalized = normalizeGR(query);
 
   try {
-    // 🏛️ STEP 1: CHECK DB FIRST TO SAVE TOKENS (Only if NO focus is provided)
     if (!focus) {
-      const { data: existingCase, error: dbError } = await supabase
+      const { data: existingCase } = await supabase
         .from('cases')
         .select('*')
         .eq('gr_no', normalized)
@@ -153,29 +143,24 @@ app.post('/api/digest', async (req, res) => {
       }
     }
 
-    // 🏛️ STEP 2: SCRAPE THE SPECIFIC URL CHOSEN BY THE USER
-    console.log(`🔍 Vault Miss or Focus Requested: Scraping selected URL for ${normalized}...`);
+    console.log(`🔍 Scraping selected URL for ${normalized}...`);
     let evidenceText = "";
     if (url) {
       evidenceText = await scrapeFullText(url);
     }
 
-    // 🏛️ STEP 3: ACCURACY PROTECTION (Hard Gate)
-    const hasEnoughData = evidenceText.length > 1200;
-    if (!hasEnoughData) {
+    if (evidenceText.length < 1200) {
       return res.status(404).json({ 
         error: "Accuracy Rejection", 
         detail: "The official text for this case could not be scraped cleanly.",
-        suggestion: "Please try another source link or paste manually."
+        suggestion: "Please try another source link."
       });
     }
 
-    // 🏛️ STEP 4: GENERATE DIGEST (Gemini)
-    // 🟢 ENHANCED: Demand comprehensive facts!
     const focusInstruction = focus 
       ? `CRITICAL DIRECTIVE: The user has requested to FOCUS STRICTLY on the issue of: "${focus}". 
          You MUST extract the issues and rulings ONLY as they pertain to "${focus}". 
-         For the FACTS, provide a highly comprehensive, detailed, chronological narrative of what truly happened in the case, heavily emphasizing the factual background that leads up to the "${focus}" issue.` 
+         For the FACTS, provide a highly comprehensive narrative emphasizing the factual background that leads up to the "${focus}" issue.` 
       : `Provide a comprehensive digest covering all major issues. For the FACTS, provide a highly detailed, chronological narrative of the events leading up to the Supreme Court. Do not over-summarize the facts.`;
 
     const prompt = `
@@ -186,14 +171,10 @@ app.post('/api/digest', async (req, res) => {
       
       STRICT EXTRACTION & FORMATTING RULES:
       1. TITLE & DATE: Look inside the brackets [ ] at the very top. DO NOT write "NOT FOUND" if it's there.
-      2. FOR FACTS: Write a COMPREHENSIVE and DETAILED chronological story of the case. Do not leave out important material dates, actions, or lower court decisions (RTC/CA). Ensure the client understands exactly what truly happened.
-      3. FOR ISSUES: You MUST format as:
-         Issue 1: [Question]
-         Issue 2: [Question]
-      4. FOR RATIO (RULINGS): You MUST match the issues exactly:
-         Ruling 1: [The specific answer and legal reasoning for Issue 1]
-         Ruling 2: [The specific answer and legal reasoning for Issue 2]
-      5. Use ONLY the provided text.
+      2. FOR FACTS: Write a COMPREHENSIVE and DETAILED chronological story of the case.
+      3. FOR ISSUES: Format as "Issue 1: [Question]"
+      4. FOR RATIO (RULINGS): Format as "Ruling 1: [Answer]" matching the issues exactly.
+      5. Output ONLY valid JSON.
 
       CASE TEXT:
       ${getSmartContext(evidenceText)}
@@ -226,11 +207,10 @@ app.post('/api/digest', async (req, res) => {
       const sanitizedText = cleanJSON(rawResponse);
       digest = JSON.parse(sanitizedText);
     } catch (parseError) {
-       console.error("❌ AI Parsing Error: The AI did not return valid JSON.", result.response.text());
+       console.error("❌ Case Digest Parse Failed.");
        return res.status(500).json({ error: "AI returned an invalid format. Please try again." });
     }
 
-    // 🏛️ STEP 5: STORE IN DB (Supabase)
     const dbRecord = {
         gr_no: normalized,
         title: digest.title || "Untitled",
@@ -247,22 +227,11 @@ app.post('/api/digest', async (req, res) => {
     };
 
     if (!focus) {
-      const { data: insertedData, error: insertError } = await supabase
-        .from('cases')
-        .insert([dbRecord])
-        .select();
-
-      if (insertError) {
-         console.error("❌ Vault Storage Error:", insertError.message);
-      } else {
-         console.log("✅ Case successfully archived in Supabase vault.");
-      }
-    } else {
-       console.log("✅ Focused case generated. Bypassing global cache.");
+      const { error: insertError } = await supabase.from('cases').insert([dbRecord]);
+      if (insertError) console.error("❌ Vault Storage Error:", insertError.message);
     }
 
     res.json(dbRecord);
-
   } catch (err) {
     console.error("❌ Process Halted:", err.message);
     res.status(500).json({ error: "System Error", detail: err.message });
@@ -270,9 +239,8 @@ app.post('/api/digest', async (req, res) => {
 });
 
 // ============================================================
-// ⚖️ ADDITIONAL MODULES (Grade, Chat)
+// ⚖️ PHASE 3: GRADE SUBMITTED BAR ANSWERS
 // ============================================================
-
 app.post('/api/grade', async (req, res) => {
   const { question, userAnswer, suggestedAnswer } = req.body;
   
@@ -291,14 +259,16 @@ app.post('/api/grade', async (req, res) => {
     3. Evaluate specifically using the ALAC method.
     4. If the student's "Legal Basis" differs significantly from the Standard, mark it as a "Weakness."
     
+    CRITICAL: Output ONLY valid JSON.
+    
     JSON SCHEMA:
     {
-      "score": number (0-100),
+      "score": number,
       "feedback": "Overall 1-sentence critique.",
       "answer": "Evaluate the categorical Yes/No and its alignment with the standard.",
-      "legalBasis": "Check if they cited the correct law/jurisprudence mentioned in the standard.",
-      "analysis": "Did they apply the facts to the law as logically as the standard did?",
-      "conclusion": "Is the final word consistent with the standard?",
+      "legalBasis": "Check if they cited the correct law/jurisprudence.",
+      "analysis": "Did they apply the facts to the law logically?",
+      "conclusion": "Is the final word consistent?",
       "improvements": ["Specific tip 1", "Specific tip 2"]
     }
   `;
@@ -310,39 +280,49 @@ app.post('/api/grade', async (req, res) => {
     });
     
     const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
     
-    const sanitizedText = cleanJSON(result.response.text());
-    const evaluation = JSON.parse(sanitizedText);
-    
-    res.json(evaluation);
+    try {
+      const sanitizedText = cleanJSON(rawText);
+      const evaluation = JSON.parse(sanitizedText);
+      res.json(evaluation);
+    } catch (parseError) {
+      console.error("❌ Grading JSON Parse Failed! AI output:", rawText);
+      res.status(500).json({ error: "Grader output format error. Try submitting again." });
+    }
     
   } catch (e) { 
-    console.error("Grader Error:", e);
+    console.error("❌ Grader Network Error:", e.message);
     res.status(500).json({ error: "Grader Offline" }); 
   }
 });
 
+// ============================================================
+// 🟢 PHASE 4: LEGAL CHAT AI
+// ============================================================
 app.post('/api/chat', async (req, res) => {
   const { history, message } = req.body; 
   
+  // 🛡️ Safety: Ensure history is an array so it doesn't crash startChat
+  const safeHistory = Array.isArray(history) ? history : [];
+
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: MODEL_NAME, 
-      tools: [{ googleSearch: {} }] 
-    });
+    // 🛡️ Removed tools: [{ googleSearch: {} }] to prevent crashes if key lacks permission
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     
-    const chat = model.startChat({ history: history || [] });
-    
+    const chat = model.startChat({ history: safeHistory });
     const result = await chat.sendMessage(message);
     
     res.json({ response: result.response.text() }); 
   } catch (e) { 
-    console.error("Chat Error:", e);
-    res.status(500).json({ error: "Chat Error" }); 
+    console.error("❌ Chat Error:", e);
+    res.status(500).json({ error: "LexCasus Chat is currently overloaded." }); 
   }
 });
 
-// 🟢 PHASE 3: CODAL DECONSTRUCTION
+// ============================================================
+// 🟢 PHASE 5: CODAL DECONSTRUCTION
+// ============================================================
 app.post('/api/deconstruct', async (req, res) => {
   const { title, content } = req.body;
   
@@ -366,9 +346,8 @@ app.post('/api/deconstruct', async (req, res) => {
 });
 
 // ============================================================
-// 🟢 PHASE 4: BAR EXAM PRACTICE GENERATOR
+// 🟢 PHASE 6: BAR EXAM QUESTION GENERATOR
 // ============================================================
-
 app.post('/api/practice', async (req, res) => {
   const { subject, topic } = req.body; 
   
@@ -381,7 +360,9 @@ app.post('/api/practice', async (req, res) => {
     REQUIREMENTS:
     1. Create a realistic, highly detailed factual scenario (like a real Supreme Court Bar Exam question).
     2. End with a specific legal question (e.g., "Is the contract valid? Explain.").
-    3. Provide the official Suggested Answer using the ALAC (Answer, Legal Basis, Analysis, Conclusion) method.
+    3. Provide the official Suggested Answer using the ALAC method.
+    
+    CRITICAL: Output ONLY valid JSON. Do not include conversational text.
     
     JSON SCHEMA:
     {
@@ -398,19 +379,28 @@ app.post('/api/practice', async (req, res) => {
     });
     
     const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
     
-    const sanitizedText = cleanJSON(result.response.text());
-    const practiceData = JSON.parse(sanitizedText);
-    
-    res.json(practiceData);
+    try {
+      const sanitizedText = cleanJSON(rawText);
+      const practiceData = JSON.parse(sanitizedText);
+      res.json(practiceData);
+    } catch (parseError) {
+      console.error("❌ Practice Generator JSON Parse Failed! AI output:", rawText);
+      res.status(500).json({ error: "AI formatting error. Try generating again." });
+    }
     
   } catch (e) { 
-    console.error("Practice Generator Error:", e);
+    console.error("❌ Practice Generator Network Error:", e.message);
     res.status(500).json({ error: "Failed to generate practice question." }); 
   }
 });
 
-console.log("⚖️  Attempting to bind to Port 5000...");
+// ============================================================
+// 🚀 SERVER LAUNCH
+// ============================================================
+console.log("⚖️  Attempting to bind to Port...");
 
+// Render requires binding to 0.0.0.0
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`⚖️  LEX CASUS ELITE: ARMED AND DEPLOYED ON PORT ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`⚖️  LEX CASUS ELITE: ARMED AND DEPLOYED ON PORT ${PORT}`));

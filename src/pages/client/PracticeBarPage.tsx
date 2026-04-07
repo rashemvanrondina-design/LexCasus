@@ -106,7 +106,7 @@ const PracticeBarPage: React.FC = () => {
       }
 
       // 🟢 FIX: Clean URL with proper /api/practice endpoint
-      const response = await fetch('https://lexcasus-backend.onrender.com/api/practice', {
+      const response = await fetch('https://lexcasus-backend.onrender.com/api/grade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
