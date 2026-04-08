@@ -46,7 +46,7 @@ export const BAR_SUBJECTS = [
 // --- API CONFIGURATION ---
 export const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:5000/api' 
-  : 'https://lexcasus-backend.onrender.com/api';
+  : 'https://lexcasus.onrender.com//api';
 
 // --- PLAN NAMES (For UI Consistency) ---
 export const PLAN_NAMES = {
