@@ -10,7 +10,25 @@ import admin from 'firebase-admin'; // 🟢 ADDED: Firebase Admin SDK
 console.log("🏛️  THE CHAMBERS ARE ATTEMPTING TO OPEN...");
 
 const app = express();
-app.use(cors());
+
+// 🛡️ EXPLICIT CORS VIP LIST
+const allowedOrigins = [
+  'http://localhost:5173', // Your local Vite server
+  'https://lex-casus.vercel.app' // Your live Vercel frontend
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
+
 app.use(express.json());
 
 // 🟢 DIAGNOSTIC LOG: Check the Environment
