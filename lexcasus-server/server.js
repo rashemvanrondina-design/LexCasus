@@ -11,13 +11,13 @@ console.log("🏛️  THE CHAMBERS ARE ATTEMPTING TO OPEN...");
 
 const app = express();
 
-// 🛡️ EXPLICIT CORS VIP LIST
+// 🛡️ BULLETPROOF CORS VIP LIST
 const allowedOrigins = [
   'http://localhost:5173', // Your local Vite server
   'https://lex-casus.vercel.app' // Your live Vercel frontend
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -25,9 +25,16 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
-}));
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200 // 🚨 Helps prevent errors on older browsers
+};
+
+app.use(cors(corsOptions));
+
+// 🚨 THE MISSING LINK: This explicitly catches and approves the browser's preflight test!
+app.options('*', cors(corsOptions)); 
 
 app.use(express.json());
 
