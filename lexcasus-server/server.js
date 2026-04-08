@@ -380,6 +380,9 @@ app.post('/api/chat', async (req, res) => {
 
     res.json({ response: result.response.text() }); 
   } catch (e) { 
+    // 🚨 ADD THIS CONSOLE.ERROR LINE RIGHT HERE:
+    console.error("❌ CHAT AI ERROR:", e); 
+    
     res.status(500).json({ error: "LexCasus Chat is currently overloaded." }); 
   }
 });
