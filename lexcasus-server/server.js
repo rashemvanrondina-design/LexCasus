@@ -9,21 +9,21 @@ import admin from 'firebase-admin'; // 🟢 ADDED: Firebase Admin SDK
 
 console.log("🏛️  THE CHAMBERS ARE ATTEMPTING TO OPEN...");
 
+// 🛡️ NATIVE, SIMPLIFIED CORS VIP LIST
 const app = express();
 
-// 🛡️ NATIVE, SIMPLIFIED CORS VIP LIST
-app.use(cors({
+// 🛡️ FINAL CORS CONFIGURATION
+const corsOptions = {
   origin: ['http://localhost:5173', 'https://lex-casus.vercel.app'],
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
 
-// Explicitly handle preflight for all routes
-app.options('*', cors()); 
+app.use(cors(corsOptions));
 
-app.use(express.json());
-
-// 🚨 THE MISSING LINK: This explicitly catches and approves the browser's preflight test!
+// 🚨 Explicitly handle preflight for all routes using the options defined above
 app.options('*', cors(corsOptions)); 
 
 app.use(express.json());
