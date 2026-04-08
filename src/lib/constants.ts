@@ -42,3 +42,43 @@ export const BAR_SUBJECTS = [
     subsubjects: ['Legal Ethics', 'Judicial Ethics', 'Practical Exercises']
   }
 ];
+
+// --- API CONFIGURATION ---
+export const API_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:5000/api' 
+  : 'https://lexcasus-backend.onrender.com/api';
+
+// --- PLAN NAMES (For UI Consistency) ---
+export const PLAN_NAMES = {
+  free: 'Basic (Free)',
+  premium: 'Premium (₱199)',
+  premium_plus: 'Premium+ (₱499)'
+};
+
+// --- SYSTEM LIMITS (For Display in Modals) ---
+export const DISPLAY_LIMITS = {
+  free: {
+    chat: '10 queries/day',
+    cases: '5 digests/day (Max 30/mo)',
+    practice: '5 answers/day', 
+    codal_notes: '100 total notes',
+    deconstruct: 'Not Available', // 🚫 Locked
+    folders: '5 Folders (10 Subnotes)'
+  },
+  premium: {
+    chat: 'Unlimited',
+    cases: '50 digests/day',
+    practice: '20 answers/day', 
+    codal_notes: '2,000 total notes', // 🟢 ALIGNED
+    deconstruct: '2,000 provisions',  // 🟢 ALIGNED
+    folders: '500 Folders (150 Subnotes)'
+  },
+  premium_plus: {
+    chat: 'Unlimited',
+    cases: 'Unlimited',
+    practice: 'Unlimited', 
+    codal_notes: 'Unlimited',
+    deconstruct: 'Unlimited',
+    folders: 'Unlimited'
+  }
+};

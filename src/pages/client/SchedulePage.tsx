@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { useScheduleStore } from '../../store/scheduleStore'; // 🟢 NEW: Import the real store
+import { useScheduleStore } from '../../store/scheduleStore'; 
 import { cn } from '../../lib/utils';
 import {
   Plus, CalendarDays, Clock, Trash2, Edit3, CheckCircle2,
@@ -14,10 +14,11 @@ const typeConfig = {
   review: { label: 'Review', color: 'bg-emerald-500', icon: RotateCcw },
 };
 
+type ScheduleType = 'class' | 'task' | 'exam' | 'review';
+
 const SchedulePage: React.FC = () => {
   const { user } = useAuthStore();
   
-  // 🟢 NEW: Connect to the Zustand Firestore Store
   const { 
     schedules, loading, loadingMore, hasMore, 
     fetchSchedules, fetchMoreSchedules, addSchedule, updateSchedule, deleteSchedule 
@@ -26,17 +27,16 @@ const SchedulePage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [filter, setFilter] = useState<string>('all');
-  const [visibleCount, setVisibleCount] = useState(20); // 🟢 NEW: Local Pagination Limit
+  const [visibleCount, setVisibleCount] = useState(20); 
 
   const [form, setForm] = useState({
     title: '',
     description: '',
     date: new Date().toISOString().split('T')[0],
     time: '09:00',
-    type: 'class' as 'class' | 'task' | 'exam' | 'review',
+    type: 'class' as ScheduleType,
   });
 
-  // 🟢 Fetch data when component loads
   useEffect(() => {
     if (user?.id) {
       fetchSchedules(user.id);
@@ -47,7 +47,6 @@ const SchedulePage: React.FC = () => {
     ? schedules
     : schedules.filter(i => i.type === filter);
 
-  // Apply the pagination limit to what the user sees
   const displayedItems = filteredItems.slice(0, visibleCount);
 
   const handleAdd = async () => {
@@ -84,11 +83,10 @@ const SchedulePage: React.FC = () => {
 
   const openEdit = (item: any) => {
     setEditingItem(item);
-    setForm({ title: item.title, description: item.description, date: item.date, time: item.time, type: item.type });
+    setForm({ title: item.title, description: item.description, date: item.date, time: item.time, type: item.type as ScheduleType });
     setShowModal(true);
   };
 
-  // 🟢 HYBRID PAGINATION HANDLER
   const handleLoadMore = async () => {
     if (visibleCount + 20 >= schedules.length && hasMore) {
       await fetchMoreSchedules();
@@ -198,7 +196,7 @@ const SchedulePage: React.FC = () => {
           })
         )}
 
-        {/* 🟢 HYBRID LOAD MORE BUTTON */}
+        {/* Load More Button */}
         {!loading && (visibleCount < filteredItems.length || hasMore) && (
           <div className="flex justify-center pt-8 pb-4">
             <button 
@@ -273,7 +271,7 @@ const SchedulePage: React.FC = () => {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setForm(f => ({ ...f, type: key as any }))}
+                      onClick={() => setForm(f => ({ ...f, type: key as ScheduleType }))}
                       className={cn(
                         'flex items-center gap-2 p-2.5 rounded-lg text-sm font-medium transition-colors',
                         form.type === key

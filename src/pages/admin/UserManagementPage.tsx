@@ -105,7 +105,6 @@ const UserManagementPage: React.FC = () => {
               <tr className="border-b border-gray-200 dark:border-navy-800 bg-gray-50 dark:bg-navy-900/50">
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">User</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Plan</th>
-                {/* 🟢 NEW REFERRAL HEADER */}
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Referral Info</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Status</th>
                 <th className="text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase px-5 py-3">Joined</th>

@@ -1,17 +1,18 @@
+// src/pages/client/PracticeBarPage.tsx
+
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { useBarStore, BarQuestion } from '../../store/barStore'; 
 import { cn, truncate } from '../../lib/utils';
+import { API_URL } from '../../lib/constants'; // 🟢 AMENDMENT 1: Dynamic URL Import
 import {
   Crown, Send, CheckCircle, Star, BookOpen, ArrowRight,
   ChevronDown, ChevronUp, RotateCcw, AlertCircle, Loader2, Plus, X, Trash2
 } from 'lucide-react';
 
-// 🟢 NEW IMPORTS: Usage Guard, Modal, and Firebase Accounting
+// 🟢 GUARDS & PAYWALL
 import { useUsageGuard } from '../../hooks/useUsageGuard';
 import UpgradeModal from '../../components/modals/UpgradeModal';
-import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 
 // 🟢 AI SCHEMA INTERFACE
 interface AIFeedback {
@@ -35,8 +36,8 @@ const getSafeText = (data: any): string => {
 
 const PracticeBarPage: React.FC = () => {
   const { user } = useAuthStore();
-  const { checkAccess } = useUsageGuard(); // 🟢 Initialize Guard
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false); // 🟢 Modal State
+  const { checkAccess } = useUsageGuard(); 
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false); 
   const isAdmin = user?.email === 'rashemvanrondina@gmail.com'; 
 
   const { questions, fetchQuestions, addQuestion, deleteQuestion, loading } = useBarStore();
@@ -88,7 +89,7 @@ const PracticeBarPage: React.FC = () => {
   const handleSubmit = async () => {
     if (!userAnswer.trim() || !currentQuestion) return;
 
-    // 🟢 ENFORCE THE LAW: Check practice limits (3 for Free, 20 for Premium)
+    // 🟢 ENFORCE THE LAW: Check practice limits
     if (!checkAccess('practiceDaily')) {
       setShowUpgradeModal(true);
       return;
@@ -97,22 +98,16 @@ const PracticeBarPage: React.FC = () => {
     setIsGrading(true);
     setSubmitted(true);
     try {
-      // 🟢 BILLING: Increment the practice count in real-time
-      if (user && user.role !== 'admin' && user.email !== 'rashemvanrondina@gmail.com') {
-        const userRef = doc(db, 'users', user.id);
-        await updateDoc(userRef, {
-          'usage.dailyPracticeCount': increment(1)
-        });
-      }
-
-      // 🟢 FIX: Clean URL with proper /api/practice endpoint
-      const response = await fetch('https://lexcasus-backend.onrender.com/api/grade', {
+      // 🟢 AMENDMENT 2: Use dynamic API_URL
+      const response = await fetch(`${API_URL}/grade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           question: currentQuestion.question, 
           userAnswer: userAnswer, 
-          suggestedAnswer: currentQuestion.suggestedAnswer 
+          suggestedAnswer: currentQuestion.suggestedAnswer,
+          userId: user?.id,
+          isAdmin: user?.role === 'admin' || user?.email === 'rashemvanrondina@gmail.com'
         })
       });
 
@@ -144,7 +139,12 @@ const PracticeBarPage: React.FC = () => {
         isOpen={showUpgradeModal} 
         onClose={() => setShowUpgradeModal(false)} 
         featureName="Bar Practice AI" 
-        limitText={user?.subscription === 'free' ? "daily limit of 5 submissions" : "daily limit of 20 submissions"} 
+        // 🟢 AMENDMENT 3: Clarified Modal Limit Text
+        limitText={
+          user?.subscription === 'free' 
+            ? "Basic tier limit of 5 submissions/day" 
+            : "Premium tier limit of 20 submissions/day"
+        } 
       />
 
       <div className="space-y-6 animate-fade-in text-left">

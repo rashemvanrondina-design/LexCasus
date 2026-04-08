@@ -33,12 +33,12 @@ const ManageCodalsPage: React.FC = () => {
 
   // 🟢 UPGRADED: Added Structural Hierarchy Fields
   const [form, setForm] = useState({
-    book: '', // The Code Name (e.g., Civil Code)
-    bookPart: '', // e.g., Book II: Property
-    titlePart: '', // e.g., Title I: Classification
-    chapter: '', // e.g., Chapter 1: Immovable Property
+    book: '', 
+    bookPart: '', 
+    titlePart: '', 
+    chapter: '', 
     articleNumber: '',
-    title: '', // Article specific title
+    title: '', 
     content: '',
   });
 
@@ -57,12 +57,15 @@ const ManageCodalsPage: React.FC = () => {
 
   const filteredCodals = codals.filter((c) => {
     const matchCode = selectedCode === 'all' || c.book === selectedCode;
+    const s = search.toLowerCase();
     const matchSearch =
       search === '' ||
-      c.content.toLowerCase().includes(search.toLowerCase()) ||
-      c.articleNumber.toLowerCase().includes(search.toLowerCase()) ||
-      (c.title || '').toLowerCase().includes(search.toLowerCase()) ||
-      ((c as any).bookPart || '').toLowerCase().includes(search.toLowerCase());
+      (c.content || '').toLowerCase().includes(s) ||
+      (c.articleNumber || '').toLowerCase().includes(s) ||
+      (c.title || '').toLowerCase().includes(s) ||
+      ((c as any).bookPart || '').toLowerCase().includes(s) ||
+      ((c as any).titlePart || '').toLowerCase().includes(s) ||
+      ((c as any).chapter || '').toLowerCase().includes(s);
     return matchCode && matchSearch;
   });
 
@@ -107,9 +110,9 @@ const ManageCodalsPage: React.FC = () => {
     if (!form.book || !form.articleNumber) return alert("Code Name and Article Number are required.");
     await addCodal({
       book: form.book,
-      bookPart: form.bookPart, // 🟢 New
-      titlePart: form.titlePart, // 🟢 New
-      chapter: form.chapter, // 🟢 New
+      bookPart: form.bookPart, 
+      titlePart: form.titlePart, 
+      chapter: form.chapter, 
       title: form.title,
       articleNumber: form.articleNumber,
       content: form.content,
@@ -123,9 +126,9 @@ const ManageCodalsPage: React.FC = () => {
     if (!editingCodal) return;
     await updateCodal(editingCodal.id, {
       book: form.book,
-      bookPart: form.bookPart, // 🟢 New
-      titlePart: form.titlePart, // 🟢 New
-      chapter: form.chapter, // 🟢 New
+      bookPart: form.bookPart, 
+      titlePart: form.titlePart, 
+      chapter: form.chapter, 
       title: form.title,
       articleNumber: form.articleNumber,
       content: form.content,

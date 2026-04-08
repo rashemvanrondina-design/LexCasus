@@ -5,7 +5,6 @@ import { useThemeStore } from '../../store/themeStore';
 import { useUIStore } from '../../store/uiStore';
 import { cn, getGreeting } from '../../lib/utils';
 import { Sun, Moon, Menu, User } from 'lucide-react';
-import NotificationPopover from './NotificationPopover';
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -71,9 +70,6 @@ const Header: React.FC = () => {
         >
           {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
-
-        {/* The New Notification System */}
-        <NotificationPopover />
 
         {/* User Profile Navigation */}
         <button

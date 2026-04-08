@@ -4,8 +4,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useNotesStore } from '../../store/notesStore';
 import { useCasesStore } from '../../store/casesStore';
 import { useBarStore } from '../../store/barStore';
-import { useScheduleStore } from '../../store/scheduleStore'; // 🟢 NEW: Real Schedule Store
-import { getGreeting } from '../../lib/utils';
+import { useScheduleStore } from '../../store/scheduleStore'; 
+import { getGreeting, cn } from '../../lib/utils'; // 🟢 FIX: Imported cn here
 import {
   CalendarDays, BookOpen, ArrowRight, Crown, Clock, 
   FileText, Loader2, ClipboardList
@@ -24,7 +24,7 @@ const DashboardPage: React.FC = () => {
   const { notes, fetchNotes } = useNotesStore();
   const { cases, fetchCases } = useCasesStore();
   const { questions, fetchQuestions } = useBarStore();
-  const { schedules, fetchSchedules } = useScheduleStore(); // 🟢 Pull real schedules
+  const { schedules, fetchSchedules } = useScheduleStore(); 
 
   const [isReady, setIsReady] = useState(false);
 
@@ -68,7 +68,7 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in relative">
       
-      {/* 🟢 The Promo Modal (Logic inside will determine if it shows) */}
+      {/* 🟢 The Promo Modal */}
       <PromoModal />
 
       {/* Greeting Card */}
@@ -187,9 +187,5 @@ const DashboardPage: React.FC = () => {
     </div>
   );
 };
-
-function cn(...classes: (string | undefined | false)[]) {
-  return classes.filter(Boolean).join(' ');
-}
 
 export default DashboardPage;

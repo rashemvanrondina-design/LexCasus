@@ -1,3 +1,5 @@
+// src/pages/client/CasesPage.tsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
@@ -5,6 +7,7 @@ import { useCasesStore } from '../../store/casesStore';
 import { auth } from '../../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { cn } from '../../lib/utils';
+import { API_URL } from '../../lib/constants'; 
 import {
   Search, Plus, Book, ChevronRight, ChevronDown, BookOpen, Layers, 
   Scale, Trash2, ArrowLeft, Loader2, Sparkles, X, Shield, Gavel, Calendar, 
@@ -14,8 +17,6 @@ import {
 
 import { useUsageGuard } from '../../hooks/useUsageGuard';
 import UpgradeModal from '../../components/modals/UpgradeModal';
-import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 
 import ReactQuill from 'react-quill-new';
 import 'react-quill/dist/quill.snow.css';
@@ -188,7 +189,7 @@ const CasesPage: React.FC = () => {
     setSearchResults([]);
     
     try {
-      const res = await fetch('https://lexcasus-backend.onrender.com/api/search', {
+      const res = await fetch(`${API_URL}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: inputText.trim() })
@@ -215,13 +216,15 @@ const CasesPage: React.FC = () => {
     setGeneratingIdx(index);
     
     try {
-      const res = await fetch('https://lexcasus-backend.onrender.com/api/digest', {
+      const res = await fetch(`${API_URL}/digest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           query: searchCard.grNo,
           url: searchCard.links.viewSource,
-          focus: focusTopic.trim() || undefined 
+          focus: focusTopic.trim() || undefined,
+          userId: user?.id,
+          isAdmin: user?.role === 'admin' || user?.email === 'rashemvanrondina@gmail.com'
         })
       });
 
@@ -231,15 +234,12 @@ const CasesPage: React.FC = () => {
         throw new Error(aiResponse.error);
       }
 
-      if (user && user.role !== 'admin' && user.email !== 'rashemvanrondina@gmail.com') {
-        const userRef = doc(db, 'users', user.id);
-        await updateDoc(userRef, {
-          'usage.dailyCaseCount': increment(1),
-          'usage.monthlyCaseCount': increment(1)
-        });
-      }
-
-      const formatForEditor = (text: string) => text ? text.replace(/\n/g, '<br/>') : '';
+      const formatForEditor = (data: any) => {
+  if (!data) return '';
+  // If Gemini went rogue and returned an Array, join it together into a String first
+  const text = Array.isArray(data) ? data.join('\n\n') : data.toString();
+  return text.replace(/\n/g, '<br/>');
+};
 
       setFormData({
         title: aiResponse.title || searchCard.title || '',
@@ -318,17 +318,22 @@ const CasesPage: React.FC = () => {
     return tmp.textContent || tmp.innerText || "";
   };
 
+  // 🟢 TS FIX: Replaced "String()" with ".toString()" to eliminate "Type 'String' has no call signatures"
   const flashcards = useMemo(() => {
     if (!selectedCase) return [];
     const cards: { type: string, question: string, answer: string }[] = [];
 
     if (selectedCase.facts) {
-      cards.push({ type: 'Core Facts', question: `What are the material facts of ${selectedCase.title}?`, answer: stripHtml(String(selectedCase.facts)) });
+      cards.push({ 
+        type: 'Core Facts', 
+        question: `What are the material facts of ${selectedCase.title}?`, 
+        answer: stripHtml((selectedCase.facts || '').toString()) 
+      });
     }
 
     if (selectedCase.issues && selectedCase.ratio) {
-      const rawIssues = stripHtml(Array.isArray(selectedCase.issues) ? selectedCase.issues.join('\n') : String(selectedCase.issues));
-      const rawRatio = stripHtml(Array.isArray(selectedCase.ratio) ? selectedCase.ratio.join('\n') : String(selectedCase.ratio));
+      const rawIssues = stripHtml(Array.isArray(selectedCase.issues) ? selectedCase.issues.join('\n') : (selectedCase.issues || '').toString());
+      const rawRatio = stripHtml(Array.isArray(selectedCase.ratio) ? selectedCase.ratio.join('\n') : (selectedCase.ratio || '').toString());
 
       const issueList = rawIssues.split(/\n/).filter((l: string) => l.trim().length > 5);
       const ratioList = rawRatio.split(/Issue \d+:/i).filter((l: string) => l.trim().length > 5);
@@ -343,7 +348,7 @@ const CasesPage: React.FC = () => {
     }
 
     if (selectedCase.doctrines) {
-      const rawDocs = stripHtml(Array.isArray(selectedCase.doctrines) ? selectedCase.doctrines.join('\n') : String(selectedCase.doctrines));
+      const rawDocs = stripHtml(Array.isArray(selectedCase.doctrines) ? selectedCase.doctrines.join('\n') : (selectedCase.doctrines || '').toString());
       
       const docs = rawDocs.split(/\n/).filter((l: string) => l.trim().length > 5);
       docs.forEach((d: string, i: number) => {
@@ -612,7 +617,11 @@ const CasesPage: React.FC = () => {
         isOpen={showUpgradeModal} 
         onClose={() => setShowUpgradeModal(false)} 
         featureName="AI Case Digest Generator" 
-        limitText={user?.subscription === 'free' ? "daily limit of 5 cases" : "daily limit of 50 cases"} 
+        limitText={
+          user?.subscription === 'free' 
+            ? "Basic tier limit of 5 cases/day (30/month)" 
+            : "Premium tier limit of 50 cases/day (300/month)"
+        } 
       />
 
       <div className="animate-fade-in max-w-6xl mx-auto space-y-8">

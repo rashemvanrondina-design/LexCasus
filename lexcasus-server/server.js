@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import admin from 'firebase-admin'; // 🟢 ADDED: Firebase Admin SDK
 
 console.log("🏛️  THE CHAMBERS ARE ATTEMPTING TO OPEN...");
 
@@ -17,9 +18,29 @@ console.log("🔑  Checking Credentials...");
 console.log("- Gemini Key:", process.env.GEMINI_API_KEY ? "✅ LOADED" : "❌ MISSING");
 console.log("- Supabase URL:", process.env.SUPABASE_URL ? "✅ LOADED" : "❌ MISSING");
 
+// 🟢 INITIALIZE FIREBASE ADMIN (The Master Key - FIXED FOR RENDER)
+if (!admin.apps.length) {
+  try {
+    if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: "lexcasusv2",
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          // 🟢 Crucial fix: Render escapes the \n, so we put them back to real newlines
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        })
+      });
+      console.log("🔥 Firebase Admin Secure Connection: ✅ LOADED");
+    } else {
+      console.log("🔥 Firebase Admin Secure Connection: ❌ MISSING ENV VARS");
+    }
+  } catch (e) {
+    console.error("⚠️ Firebase Admin could not initialize:", e.message);
+  }
+}
+
 // 🟢 CONFIGURATION: AI & DATABASE
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-// Note: If 'gemini-2.5-flash' throws a 500 error later, change this to 'gemini-1.5-flash'
 const MODEL_NAME = "gemini-2.5-flash"; 
 
 const supabase = createClient(
@@ -41,7 +62,6 @@ function getSmartContext(text) {
   return `${text.slice(0, 18000)}\n\n[...TECHNICAL PROCEEDINGS TRUNCATED...]\n\n${text.slice(-18000)}`;
 }
 
-// 🛡️ Helper to safely strip Markdown formatting from AI JSON responses
 function cleanJSON(rawText) {
   let cleaned = rawText.trim();
   if (cleaned.startsWith("```json")) cleaned = cleaned.replace(/^```json/, "");
@@ -72,7 +92,7 @@ async function scrapeFullText(url) {
 }
 
 // ============================================================
-// 🩺 HEALTH CHECK (Test if Render is awake)
+// 🩺 HEALTH CHECK
 // ============================================================
 app.get('/api/health', (req, res) => {
   res.json({ status: "🟢 The Chambers are Open", time: new Date().toISOString() });
@@ -126,7 +146,7 @@ app.post('/api/search', async (req, res) => {
 // ⚖️ PHASE 2: GENERATE CASE DIGEST
 // ============================================================
 app.post('/api/digest', async (req, res) => {
-  const { query, url, focus } = req.body;
+  const { query, url, focus, userId, isAdmin } = req.body;
   const normalized = normalizeGR(query);
 
   try {
@@ -143,7 +163,6 @@ app.post('/api/digest', async (req, res) => {
       }
     }
 
-    console.log(`🔍 Scraping selected URL for ${normalized}...`);
     let evidenceText = "";
     if (url) {
       evidenceText = await scrapeFullText(url);
@@ -203,11 +222,9 @@ app.post('/api/digest', async (req, res) => {
     
     let digest;
     try {
-      const rawResponse = result.response.text();
-      const sanitizedText = cleanJSON(rawResponse);
+      const sanitizedText = cleanJSON(result.response.text());
       digest = JSON.parse(sanitizedText);
     } catch (parseError) {
-       console.error("❌ Case Digest Parse Failed.");
        return res.status(500).json({ error: "AI returned an invalid format. Please try again." });
     }
 
@@ -227,22 +244,36 @@ app.post('/api/digest', async (req, res) => {
     };
 
     if (!focus) {
-      const { error: insertError } = await supabase.from('cases').insert([dbRecord]);
-      if (insertError) console.error("❌ Vault Storage Error:", insertError.message);
+      await supabase.from('cases').insert([dbRecord]);
+    }
+
+    // 🛡️ THE PAYWALL ENFORCER: Securely deduct Case Digest credits
+    if (userId && !isAdmin && admin.apps.length > 0) {
+      try {
+        const db = admin.firestore();
+        await db.collection('users').doc(userId).update({
+          'usage.dailyCaseCount': admin.firestore.FieldValue.increment(1),
+          'usage.monthlyCaseCount': admin.firestore.FieldValue.increment(1)
+        });
+        console.log(`💰 Billed Case Digest to User: ${userId}`);
+      } catch (billingError) {
+        console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
+      }
     }
 
     res.json(dbRecord);
   } catch (err) {
-    console.error("❌ Process Halted:", err.message);
+    console.error("❌ Digest Error:", err.message);
     res.status(500).json({ error: "System Error", detail: err.message });
   }
 });
 
 // ============================================================
-// ⚖️ PHASE 3: GRADE SUBMITTED BAR ANSWERS
+// ⚖️ PHASE 3: GRADE SUBMITTED BAR ANSWERS (SECURED PAYWALL)
 // ============================================================
 app.post('/api/grade', async (req, res) => {
-  const { question, userAnswer, suggestedAnswer } = req.body;
+  // 🟢 Extract userId and isAdmin from the request
+  const { question, userAnswer, suggestedAnswer, userId, isAdmin } = req.body;
   
   const prompt = `
     SYSTEM: You are an Elite Philippine Bar Examiner. 
@@ -280,51 +311,70 @@ app.post('/api/grade', async (req, res) => {
     });
     
     const result = await model.generateContent(prompt);
-    const rawText = result.response.text();
     
+    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    if (userId && !isAdmin && admin.apps.length > 0) {
+      try {
+        const db = admin.firestore();
+        await db.collection('users').doc(userId).update({
+          'usage.dailyPracticeCount': admin.firestore.FieldValue.increment(1)
+        });
+        console.log(`💰 Billed AI Practice Grader to User: ${userId}`);
+      } catch (billingError) {
+        console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
+      }
+    }
+
     try {
-      const sanitizedText = cleanJSON(rawText);
-      const evaluation = JSON.parse(sanitizedText);
+      const evaluation = JSON.parse(cleanJSON(result.response.text()));
       res.json(evaluation);
     } catch (parseError) {
-      console.error("❌ Grading JSON Parse Failed! AI output:", rawText);
       res.status(500).json({ error: "Grader output format error. Try submitting again." });
     }
     
   } catch (e) { 
-    console.error("❌ Grader Network Error:", e.message);
     res.status(500).json({ error: "Grader Offline" }); 
   }
 });
 
 // ============================================================
-// 🟢 PHASE 4: LEGAL CHAT AI
+// 🟢 PHASE 4: LEGAL CHAT AI (SECURED PAYWALL)
 // ============================================================
 app.post('/api/chat', async (req, res) => {
-  const { history, message } = req.body; 
-  
-  // 🛡️ Safety: Ensure history is an array so it doesn't crash startChat
+  // 🟢 Extract userId and isAdmin from the frontend request
+  const { history, message, userId, isAdmin } = req.body; 
   const safeHistory = Array.isArray(history) ? history : [];
 
   try {
-    // 🛡️ Removed tools: [{ googleSearch: {} }] to prevent crashes if key lacks permission
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
-    
     const chat = model.startChat({ history: safeHistory });
     const result = await chat.sendMessage(message);
     
+    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    if (userId && !isAdmin && admin.apps.length > 0) {
+      try {
+        const db = admin.firestore();
+        await db.collection('users').doc(userId).update({
+          'usage.dailyChatCount': admin.firestore.FieldValue.increment(1)
+        });
+        console.log(`💰 Billed AI Chat to User: ${userId}`);
+      } catch (billingError) {
+        console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
+      }
+    }
+
     res.json({ response: result.response.text() }); 
   } catch (e) { 
-    console.error("❌ Chat Error:", e);
     res.status(500).json({ error: "LexCasus Chat is currently overloaded." }); 
   }
 });
 
 // ============================================================
-// 🟢 PHASE 5: CODAL DECONSTRUCTION
+// 🟢 PHASE 5: CODAL DECONSTRUCTION (WITH SECURE BILLING)
 // ============================================================
 app.post('/api/deconstruct', async (req, res) => {
-  const { title, content } = req.body;
+  // 🟢 Extract userId and isAdmin from the frontend request
+  const { title, content, userId, isAdmin } = req.body;
   
   const prompt = `
     SYSTEM: You are Lex Casus, an expert Philippine Legal Scholar.
@@ -339,6 +389,20 @@ app.post('/api/deconstruct', async (req, res) => {
   try {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     const result = await model.generateContent(prompt);
+    
+    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    if (userId && !isAdmin && admin.apps.length > 0) {
+      try {
+        const db = admin.firestore();
+        await db.collection('users').doc(userId).update({
+          'usage.aiDeconstructionCount': admin.firestore.FieldValue.increment(1)
+        });
+        console.log(`💰 Billed AI Deconstruction to User: ${userId}`);
+      } catch (billingError) {
+        console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
+      }
+    }
+
     res.json({ analysis: result.response.text() });
   } catch (e) {
     res.status(500).json({ error: "Deconstruction failed" });
@@ -379,14 +443,12 @@ app.post('/api/practice', async (req, res) => {
     });
     
     const result = await model.generateContent(prompt);
-    const rawText = result.response.text();
     
     try {
-      const sanitizedText = cleanJSON(rawText);
-      const practiceData = JSON.parse(sanitizedText);
+      const practiceData = JSON.parse(cleanJSON(result.response.text()));
       res.json(practiceData);
     } catch (parseError) {
-      console.error("❌ Practice Generator JSON Parse Failed! AI output:", rawText);
+      console.error("❌ Practice Generator JSON Parse Failed! AI output:", result.response.text());
       res.status(500).json({ error: "AI formatting error. Try generating again." });
     }
     
@@ -399,8 +461,5 @@ app.post('/api/practice', async (req, res) => {
 // ============================================================
 // 🚀 SERVER LAUNCH
 // ============================================================
-console.log("⚖️  Attempting to bind to Port...");
-
-// Render requires binding to 0.0.0.0
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`⚖️  LEX CASUS ELITE: ARMED AND DEPLOYED ON PORT ${PORT}`));

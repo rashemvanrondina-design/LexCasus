@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* --- GLOBAL SCROLLBARS --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-500;
+}
+
 @layer base {
   * {
     @apply border-gray-200 dark:border-gray-700;
@@ -14,23 +32,6 @@
 
   ::selection {
     @apply bg-gold-500/20 text-navy-900 dark:text-gold-200;
-  }
-
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-gray-500;
   }
 }
 
@@ -115,6 +116,7 @@
     @apply bg-white/70 dark:bg-navy-900/70 backdrop-blur-xl;
   }
 }
+
 /* --- Tiptap Editor & Prose Overrides --- */
 
 /* 1. Ensure bullets and numbers actually show up */

@@ -1,3 +1,5 @@
+// src/pages/client/BillingPage.tsx
+
 import React, { useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { cn } from '../../lib/utils';
@@ -25,22 +27,31 @@ const BillingPage: React.FC = () => {
   const isPremium = subscription === 'premium';
   const isPremiumPlus = subscription === 'premium_plus';
 
-  // 🟢 REFERRAL DISCOUNT LOGIC
+  // 🟢 AMENDMENT 1: Accurate Pricing & Discount Math for ₱199 / ₱499
   const hasDiscount = (user as any)?.hasActiveDiscount || false;
-  const premiumPrice = hasDiscount ? '126.75' : '169.00';
+  const premiumPrice = hasDiscount ? '149.25' : '199.00';
   const premiumPlusPrice = hasDiscount ? '374.25' : '499.00';
 
-  // 🟢 DYNAMIC REAL-TIME DATES & INVOICE FIX
+  // 🟢 ACCURATE REAL-TIME DATES & INVOICE FIX
   const today = new Date();
   
-  const accountCreatedDate = user?.createdAt 
-    ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) 
-    : today.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-  
-  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
-  const formattedNextBilling = nextMonth.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+  // Anchor the billing cycle to when their subscription updated, or account creation
+  const anchorDate = (user as any)?.subscriptionUpdatedAt 
+    ? new Date((user as any).subscriptionUpdatedAt) 
+    : user?.createdAt ? new Date(user.createdAt) : today;
 
+  // Calculate Next Billing Date (Fast-forward to the next upcoming month from anchor)
+  let nextBilling = new Date(anchorDate);
+  while (nextBilling <= today) {
+    nextBilling.setMonth(nextBilling.getMonth() + 1);
+  }
+  const formattedNextBilling = nextBilling.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   const nextBillingDate = !isFree ? formattedNextBilling : 'N/A';
+
+  // Calculate Last Invoice Date (1 month prior to next billing)
+  let lastInvoice = new Date(nextBilling);
+  lastInvoice.setMonth(lastInvoice.getMonth() - 1);
+  const formattedLastInvoice = lastInvoice.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
   
   // 🟢 PAYMENT MODAL STATES
   const [paymentModalData, setPaymentModalData] = useState<{ isOpen: boolean, plan: 'premium' | 'premium_plus' | null }>({ isOpen: false, plan: null });
@@ -49,10 +60,10 @@ const BillingPage: React.FC = () => {
 
   // 🟢 ACCURATE INVOICE HISTORY
   const billingHistory = isPremiumPlus 
-    ? [{ date: accountCreatedDate, amount: `₱${premiumPlusPrice}`, status: 'Paid', plan: 'Premium+' }] 
+    ? [{ date: formattedLastInvoice, amount: `₱${premiumPlusPrice}`, status: 'Paid', plan: 'Premium+' }] 
     : isPremium 
-      ? [{ date: accountCreatedDate, amount: `₱${premiumPrice}`, status: 'Paid', plan: 'Premium' }]
-      : [{ date: accountCreatedDate, amount: '₱0.00', status: 'Paid', plan: 'Free' }];
+      ? [{ date: formattedLastInvoice, amount: `₱${premiumPrice}`, status: 'Paid', plan: 'Premium' }]
+      : [{ date: formattedLastInvoice, amount: '₱0.00', status: 'Paid', plan: 'Free' }];
 
   // 🟢 EMAIL HANDLERS
   const handleCopyEmail = () => {
@@ -119,11 +130,13 @@ const BillingPage: React.FC = () => {
                   </div>
                   <p className="text-xs font-bold text-blue-900 dark:text-blue-400 uppercase tracking-widest opacity-70">Scan to Pay</p>
                   
-                  {/* 🟢 MODAL PROMO PRICING (Factoring in Discount) */}
+                  {/* 🟢 MODAL PROMO PRICING */}
                   <div className="flex items-center gap-2 mt-1">
-                    <p className="text-sm text-blue-400/80 line-through decoration-blue-500/50 font-semibold">
-                      {paymentModalData.plan === 'premium' ? '₱199' : '₱599'}
-                    </p>
+                    {hasDiscount && (
+                      <p className="text-sm text-blue-400/80 line-through decoration-blue-500/50 font-semibold">
+                        {paymentModalData.plan === 'premium' ? '₱199' : '₱499'}
+                      </p>
+                    )}
                     <p className="text-3xl font-black text-blue-600 dark:text-blue-500">
                       ₱{paymentModalData.plan === 'premium' ? premiumPrice : premiumPlusPrice}
                     </p>
@@ -337,9 +350,11 @@ const BillingPage: React.FC = () => {
             
             {/* 🟢 PROMO & DISCOUNT PRICING */}
             <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
-              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
-                {hasDiscount ? '₱199' : '₱199'}
-              </span>
+              {hasDiscount && (
+                <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
+                  ₱199
+                </span>
+              )}
               <span className="text-4xl font-black text-gold-600 dark:text-gold-400 leading-none">
                 ₱{premiumPrice}
               </span>
@@ -351,13 +366,14 @@ const BillingPage: React.FC = () => {
               </div>
             )}
 
+            {/* 🟢 AMENDMENT 3: Accurate Premium Limits displayed */}
             <div className="space-y-4 mb-8 flex-1">
               <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-medium"><strong>Unlimited</strong> AI Chat</span></div>
               <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-medium"><strong>20</strong> Bar Practice / day</span></div>
-              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-medium"><strong>500</strong> AI Deconstructions</span></div>
+              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300 font-medium"><strong>2,000</strong> AI Deconstructions</span></div>
               <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300"><strong>50</strong> Case Digests / day (Max 300/mo)</span></div>
-              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300"><strong>500</strong> E-Codal Notes</span></div>
-              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300"><strong>200</strong> Note Folders</span></div>
+              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300"><strong>2,000</strong> E-Codal Notes</span></div>
+              <div className="flex items-start gap-2.5 text-sm"><CheckCircle2 className="w-4 h-4 text-gold-500 mt-0.5" /><span className="text-gray-700 dark:text-gray-300"><strong>500</strong> Note Folders</span></div>
             </div>
 
             <button 
@@ -383,9 +399,11 @@ const BillingPage: React.FC = () => {
 
             {/* 🟢 PROMO & DISCOUNT PRICING */}
             <div className={cn("flex items-end gap-2", hasDiscount ? "mb-1" : "mb-6")}>
-              <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
-                {hasDiscount ? '₱599' : '₱599'}
-              </span>
+              {hasDiscount && (
+                <span className="text-gray-400 dark:text-gray-500 line-through text-lg font-medium decoration-2">
+                  ₱499
+                </span>
+              )}
               <span className="text-4xl font-black text-purple-600 dark:text-purple-400 leading-none">
                 ₱{premiumPlusPrice}
               </span>

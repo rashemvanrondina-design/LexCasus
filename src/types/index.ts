@@ -15,9 +15,9 @@ export const PLAN_LIMITS = {
   },
   premium: {
     chatDaily: Infinity,
-    codalNotes: 500,
-    aiDeconstruction: 500,
-    noteFolders: 200,
+    codalNotes: 2000,
+    aiDeconstruction: 2000,
+    noteFolders: 500,
     noteSubnotes: 150, 
     casesDaily: 50,
     casesMonthly: 300,
@@ -142,6 +142,7 @@ export interface CodalProvision {
 
 export interface Note {
   id: string;
+  userId?: string; // 🟢 FIX: Added to match notesStore.ts
   title: string;
   content: string;
   tags: string[];
@@ -154,6 +155,7 @@ export interface Note {
 
 export interface ScheduleItem {
   id: string;
+  userId?: string; // 🟢 FIX: Added to match scheduleStore.ts
   title: string;
   description: string;
   date: string;
@@ -167,6 +169,7 @@ export interface AdminStats {
   activeSubscriptions: number;
   totalQuestions: number;
   premiumUsers: number;
+  premiumPlusUsers: number; // 🟢 FIX: Added to match adminStore.ts
   basicUsers: number;
 }
 

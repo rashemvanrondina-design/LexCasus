@@ -10,20 +10,20 @@ import {
   where, 
   getDocs,
   orderBy,
-  limit // 🟢 IMPORTED: To protect your billing quota
+  limit 
 } from 'firebase/firestore';
 import { Note } from '../types'; 
 
 interface NotesState {
   notes: Note[];
   loading: boolean;
-  hasFetched: boolean; // 🟢 SECURITY GUARD: Prevents duplicate reads
+  hasFetched: boolean; 
   
   fetchNotes: (userId?: string) => Promise<void>;
   saveNote: (noteData: Partial<Note>) => Promise<void>; 
   removeNote: (id: string) => Promise<void>;
   
-  clearNotes: () => void; // 🟢 DATA WIPE: For safe logouts
+  clearNotes: () => void; 
 }
 
 export const useNotesStore = create<NotesState>((set, get) => ({
@@ -32,7 +32,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   hasFetched: false,
 
   fetchNotes: async (passedUserId?: string) => {
-    // 🟢 THE IRONCLAD BYPASS: If we checked Firebase once, don't do it again!
     if (get().hasFetched) return; 
 
     const userId = passedUserId || auth.currentUser?.uid; 
@@ -47,8 +46,9 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       const q = query(
         collection(db, 'notes'), 
         where('userId', '==', userId),
+        where('type', '==', 'general'), // 🟢 OPTIMIZED: Filter at the database level!
         orderBy('title', 'asc'),
-        limit(100) // 🟢 EXHIBIT C: Cap the fetch to 100 notes at a time to prevent billing spikes
+        limit(100) 
       );
       
       const querySnapshot = await getDocs(q);
@@ -57,13 +57,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         id: doc.id,
       })) as Note[];
       
-      // Filter out the E-Codal notes.
-      const personalNotes = fetchedNotes.filter(note => note.type !== 'codal_annotation');
+      // 🟢 Client-side filter removed. Firebase already did the heavy lifting.
 
-      // 🟢 Lock the gate: Mark hasFetched as true
-      set({ notes: personalNotes, loading: false, hasFetched: true });
-    } catch (error) {
+      set({ notes: fetchedNotes, loading: false, hasFetched: true });
+    } catch (error: any) {
       console.error("Error fetching notes:", error);
+      if (error?.code === 'failed-precondition') {
+        console.error("Firebase requires a Composite Index for userId + type + title. Check the Firebase link above this error.");
+      }
       set({ loading: false });
     }
   },

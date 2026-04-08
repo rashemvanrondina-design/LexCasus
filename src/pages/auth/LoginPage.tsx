@@ -9,7 +9,7 @@ import {
   FolderOpen, X, Sparkles, Sun, Moon, Layers, ChevronDown, CheckCircle2,
   Crown, Diamond, Zap, Check, ShieldCheck, Clock, Target, Coffee
 } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 /* ─── 🟢 CUSTOM GOOGLE ICON SVG ─── */
 const GoogleIcon = () => (
@@ -72,7 +72,7 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [referralCode, setReferralCode] = useState(''); // 🟢 Added Referral State
+  const [referralCode, setReferralCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -93,15 +93,6 @@ const LoginPage: React.FC = () => {
     };
     img.onerror = () => setColors({ r: 212, g: 168, b: 67 });
   }, [activeIndex]);
-
-  /* ─── 🖱️ PARALLAX ─── */
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const { innerWidth, innerHeight } = window;
-    mouseX.set((e.clientX - innerWidth / 2) / 60);
-    mouseY.set((e.clientY - innerHeight / 2) / 60);
-  };
 
   /* ─── AUTH HANDLERS ─── */
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -137,7 +128,6 @@ const LoginPage: React.FC = () => {
     setError(null);
     try {
       if (isRegister) {
-        // 🟢 Pass the referral code to the register function
         const success = await register(name, email, password, referralCode);
         if (success) setVerificationSent(true);
         else setError(useAuthStore.getState().error || "Registration failed.");
@@ -169,7 +159,7 @@ const LoginPage: React.FC = () => {
   const viewKey = verificationSent ? 'verify-email' : isForgotPassword ? (forgotSent ? 'forgot-success' : 'forgot-email') : (isRegister ? 'register' : 'login');
 
   return (
-    <div onMouseMove={handleMouseMove} className={`min-h-screen transition-colors duration-700 relative font-sans ${isDark ? 'bg-[#02040A] text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`min-h-screen transition-colors duration-700 relative font-sans ${isDark ? 'bg-[#02040A] text-white' : 'bg-slate-50 text-slate-900'}`}>
 
       {/* 🎬 DYNAMIC FIXED BACKGROUND */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">

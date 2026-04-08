@@ -21,9 +21,6 @@ import SubscriptionControlPage from './pages/admin/SubscriptionControlPage';
 import ManageCodalsPage from './pages/admin/ManageCodalsPage';
 import AdminAnnouncementsPage from './pages/admin/AdminAnnouncementsPage'; 
 
-// 🟢 AMENDMENT: Import the Promo Modal
-import PromoModal from './components/modals/PromoModal';
-
 // --- GUARDS ---
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -97,9 +94,6 @@ const App: React.FC = () => {
         v7_relativeSplatPath: true,
       }}
     >
-      {/* 🟢 AMENDMENT: Mount the Promo Modal globally so it can detect user logins */}
-      <PromoModal />
-      
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -120,8 +114,6 @@ const App: React.FC = () => {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/disclaimer" element={<DisclaimerPage />} />
-
-          {/* 🟢 AMENDED: Since ClientLayout is already protected, these don't need double protection */}
           <Route path="/practice" element={<PracticeBarPage />} />
           <Route path="/chat" element={<LegalChatPage />} />
           <Route path="/cases" element={<CasesPage />} />

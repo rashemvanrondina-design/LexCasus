@@ -11,7 +11,6 @@ import {
 } from 'firebase/auth';
 import { 
   doc, getDoc, setDoc, updateDoc, onSnapshot, 
-  query, collection, where, getDocs, increment
 } from 'firebase/firestore'; 
 import { auth, db } from '../lib/firebase';
 import type { User, SubscriptionPlan, UserUsage } from '../types'; 
@@ -49,8 +48,6 @@ interface AuthState {
   initialize: () => void; 
   clearError: () => void; 
   updateUser: (data: Partial<User>) => Promise<boolean>;
-  
-  incrementUsage: (type: 'chat' | 'case' | 'practice' | 'deconstruct') => Promise<void>; 
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -64,7 +61,7 @@ export const useAuthStore = create<AuthState>()(
 
       clearError: () => set({ error: null }),
 
-      // --- INITIALIZE: REAL-TIME FIREBASE SYNC WITH AUTO-RESET ---
+      // --- INITIALIZE: REAL-TIME FIREBASE SYNC ---
       initialize: () => {
         onAuthStateChanged(auth, async (firebaseUser) => {
           if (firebaseUser) {
@@ -81,25 +78,25 @@ export const useAuthStore = create<AuthState>()(
             
             unsubUser = onSnapshot(userRef, async (userDoc) => {
               if (userDoc.exists()) {
-                const userData = userDoc.data() as User;
+                let userData = userDoc.data() as User;
                 
-                // 🟢 THE MIDNIGHT RESET LOGIC
+                // 🟢 UI-ONLY MIDNIGHT RESET (Display accurate usage without illegal DB writes)
                 const today = new Date().toISOString().split('T')[0]; 
                 const thisMonth = today.slice(0, 7); 
 
                 if (userData.usage && (userData.usage.lastResetDate !== today || userData.usage.lastMonthlyResetDate !== thisMonth)) {
-                  const updatedUsage = {
-                    ...userData.usage,
-                    dailyChatCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyChatCount,
-                    dailyCaseCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyCaseCount,
-                    dailyPracticeCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyPracticeCount,
-                    monthlyCaseCount: userData.usage.lastMonthlyResetDate !== thisMonth ? 0 : userData.usage.monthlyCaseCount,
-                    lastResetDate: today,
-                    lastMonthlyResetDate: thisMonth
+                  userData = {
+                    ...userData,
+                    usage: {
+                      ...userData.usage,
+                      dailyChatCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyChatCount,
+                      dailyCaseCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyCaseCount,
+                      dailyPracticeCount: userData.usage.lastResetDate !== today ? 0 : userData.usage.dailyPracticeCount,
+                      monthlyCaseCount: userData.usage.lastMonthlyResetDate !== thisMonth ? 0 : userData.usage.monthlyCaseCount,
+                      lastResetDate: today,
+                      lastMonthlyResetDate: thisMonth
+                    }
                   };
-                  
-                  await updateDoc(userRef, { usage: updatedUsage });
-                  return; 
                 }
 
                 set({ 
@@ -177,21 +174,10 @@ export const useAuthStore = create<AuthState>()(
             let needsUpdate = false;
             const updatePayload: Partial<User> = {};
 
+            // 🟢 ONLY update legal fields like photoURL
             if (firebaseUser.photoURL && userData.photoURL !== firebaseUser.photoURL) {
               userData.photoURL = firebaseUser.photoURL;
               updatePayload.photoURL = firebaseUser.photoURL;
-              needsUpdate = true;
-            }
-
-            if (!userData.usage) {
-              userData.usage = INITIAL_USAGE;
-              updatePayload.usage = INITIAL_USAGE;
-              needsUpdate = true;
-            }
-
-            if ((userData.subscription as any) === 'basic') {
-              userData.subscription = 'free';
-              updatePayload.subscription = 'free';
               needsUpdate = true;
             }
 
@@ -229,7 +215,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // 🟢 UPDATED REGISTER: Tagging the Referral (No free premium yet!)
+      // 🟢 REGISTER
       register: async (name, email, password, appliedReferralCode?: string) => {
         set({ error: null });
         try {
@@ -244,13 +230,13 @@ export const useAuthStore = create<AuthState>()(
             email: email.toLowerCase(),
             name,
             role: 'client',
-            subscription: 'free', // 🟢 Everyone starts on free
+            subscription: 'free', 
             isActive: true,
             createdAt: new Date().toISOString(),
             usage: INITIAL_USAGE, 
             referralCode: myCode,
-            referredBy: cleanReferralCode, // 🟢 Save who referred them
-            hasActiveDiscount: false // Flag for when THEY refer someone
+            referredBy: cleanReferralCode, 
+            hasActiveDiscount: false 
           };
 
           await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
@@ -269,7 +255,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // --- UPDATE USER ---
+      // --- UPDATE USER (Allowed fields only) ---
       updateUser: async (data: Partial<User>) => {
         const currentUser = get().user;
         if (!currentUser) return false;
@@ -308,33 +294,17 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // 🟢 UPDATED SUBSCRIPTION: The Reward Trigger
+      // 🟢 DELEGATED SUBSCRIPTION HANDLER
       setSubscription: async (plan: SubscriptionPlan) => {
         const currentUser = get().user;
         if (currentUser) {
           try {
-            // 1. Upgrade the current paying user
-            await updateDoc(doc(db, 'users', currentUser.id), { subscription: plan }); 
+            // NOTE: Because Firestore rules block users from updating their own subscription,
+            // this must eventually call your secure server.js backend!
+            // Example: await fetch('/api/upgrade', { method: 'POST', body: JSON.stringify({ plan }) })
+            
+            // For UI responsiveness while we wait for the backend build:
             set({ user: { ...currentUser, subscription: plan } });
-
-            // 2. CHECK FOR REFERRAL REWARD
-            // If they bought a paid plan AND they were referred by someone
-            if ((plan === 'premium' || plan === 'premium_plus') && (currentUser as any).referredBy) {
-              
-               // Find the generous blockmate who referred them
-               const q = query(collection(db, 'users'), where('referralCode', '==', (currentUser as any).referredBy));
-               const snapshot = await getDocs(q);
-               
-               if (!snapshot.empty) {
-                   const referrerDoc = snapshot.docs[0];
-                   
-                   // 🟢 Grant the Referrer the 25% Discount Flag!
-                   await updateDoc(doc(db, 'users', referrerDoc.id), {
-                       'usage.successfulReferrals': increment(1),
-                       'hasActiveDiscount': true 
-                   });
-               }
-            }
 
           } catch (error) {
             console.error("Subscription Update Failed:", error);
@@ -342,38 +312,6 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      // --- USAGE TRACKER ---
-      incrementUsage: async (type) => {
-        const currentUser = get().user;
-        
-        if (!currentUser || !currentUser.usage) return;
-        if (currentUser.role === 'admin' || currentUser.email === 'rashemvanrondina@gmail.com') return;
-
-        const newUsage = { ...currentUser.usage };
-
-        switch (type) {
-          case 'chat':
-            newUsage.dailyChatCount += 1;
-            break;
-          case 'case':
-            newUsage.dailyCaseCount += 1;
-            newUsage.monthlyCaseCount += 1; 
-            break;
-          case 'practice':
-            newUsage.dailyPracticeCount += 1;
-            break;
-          case 'deconstruct':
-            newUsage.aiDeconstructionCount += 1;
-            break;
-        }
-
-        try {
-          await updateDoc(doc(db, 'users', currentUser.id), { usage: newUsage });
-          set({ user: { ...currentUser, usage: newUsage } });
-        } catch (error) {
-          console.error("Failed to update usage ledger:", error);
-        }
-      },
     }),
     { name: 'lexcasus-auth' }
   )

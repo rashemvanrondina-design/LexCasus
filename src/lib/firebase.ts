@@ -2,16 +2,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getStorage } from 'firebase/storage';
-// 🟢 1. Import initializeFirestore and cache managers (removed getFirestore)
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
+// 🟢 THE FIX: Dynamically pull from your Vite .env file
 const firebaseConfig = {
-  apiKey: "AIzaSyCdgmCt8jhJMy5rjWRbwDX8QNyZucxO3Eg",
-  authDomain: "lexcasusv2.firebaseapp.com",
-  projectId: "lexcasusv2",
-  storageBucket: "lexcasusv2.firebasestorage.app",
-  messagingSenderId: "304653456512",
-  appId: "1:304653456512:web:e7def4c21fcfa0724f4265"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
@@ -21,7 +21,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// 🟢 2. Initialize Firestore WITH persistent local cache enabled across multiple tabs
+// Initialize Firestore WITH persistent local cache enabled across multiple tabs
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()

@@ -3,8 +3,8 @@ import { useAdminStore } from '../../store/adminStore';
 import { formatRelativeTime } from '../../lib/utils';
 import {
   Users, FlaskConical, CreditCard, TrendingUp,
-  Activity, Crown, UserCheck, FileText, Loader2,
-  BookOpen, AlertCircle, Diamond
+  Activity, Crown, UserCheck, AlertCircle, Diamond, LucideIcon,
+  Loader2, BookOpen
 } from 'lucide-react';
 
 const AdminDashboardPage: React.FC = () => {
@@ -39,11 +39,10 @@ const AdminDashboardPage: React.FC = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Users} color="blue" label="Total Users" value={stats.totalUsers} sub="Registered attorneys" />
-        <StatCard icon={Activity} color="emerald" label="Active Subs" value={stats.activeSubscriptions} sub="Total paying users" />
-        <StatCard icon={FlaskConical} color="purple" label="Bar Questions" value={stats.totalQuestions} sub="Total database" />
-        {/* 🟢 UPDATED to reflect the highest tier */}
-        <StatCard icon={Diamond} color="purple" label="Premium+ Users" value={premiumPlusCount} sub="₱599 subscribers" />
+        <StatCard icon={Users} label="Total Users" value={stats.totalUsers} sub="Registered attorneys" />
+        <StatCard icon={Activity} label="Active Subs" value={stats.activeSubscriptions} sub="Total paying users" />
+        <StatCard icon={FlaskConical} label="Bar Questions" value={stats.totalQuestions} sub="Total database" />
+        <StatCard icon={Diamond} label="Premium+ Users" value={premiumPlusCount} sub="₱599 subscribers" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -54,21 +53,18 @@ const AdminDashboardPage: React.FC = () => {
             Subscription Breakdown
           </h3>
           <div className="space-y-6">
-            {/* 🟢 UPDATED: Premium+ Tier */}
             <ProgressBar 
               label="Premium+ (₱599)" 
               value={premiumPlusCount} 
               total={stats.totalUsers} 
               color="bg-purple-500" 
             />
-            {/* 🟢 UPDATED: Premium Tier */}
             <ProgressBar 
               label="Premium (₱199)" 
               value={premiumCount} 
               total={stats.totalUsers} 
               color="bg-gold-500" 
             />
-            {/* 🟢 UPDATED: Free Tier */}
             <ProgressBar 
               label="Free Access" 
               value={freeCount} 
@@ -103,7 +99,14 @@ const AdminDashboardPage: React.FC = () => {
 
 // --- Sub-components ---
 
-const StatCard = ({ icon: Icon, color, label, value, sub }: any) => (
+interface StatCardProps {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  sub: string;
+}
+
+const StatCard: React.FC<StatCardProps> = ({ icon: Icon, label, value, sub }) => (
   <div className="card p-5">
     <div className="flex items-center justify-between mb-3">
       <div className="w-10 h-10 bg-gray-100 dark:bg-navy-800 rounded-xl flex items-center justify-center">
@@ -116,7 +119,14 @@ const StatCard = ({ icon: Icon, color, label, value, sub }: any) => (
   </div>
 );
 
-const ProgressBar = ({ label, value, total, color }: any) => {
+interface ProgressBarProps {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+}
+
+const ProgressBar: React.FC<ProgressBarProps> = ({ label, value, total, color }) => {
   const percentage = total > 0 ? (value / total) * 100 : 0;
   return (
     <div>
@@ -131,8 +141,17 @@ const ProgressBar = ({ label, value, total, color }: any) => {
   );
 };
 
-const ActivityItem = ({ activity }: any) => {
-  // 🟢 2. Dynamic Icon selection based on log type
+interface ActivityItemProps {
+  activity: {
+    id: string;
+    type: string;
+    action: string;
+    detail: string;
+    timestamp: number;
+  };
+}
+
+const ActivityItem: React.FC<ActivityItemProps> = ({ activity }) => {
   const getIcon = () => {
     switch (activity.type) {
       case 'user': return UserCheck;

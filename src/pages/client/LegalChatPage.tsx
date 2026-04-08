@@ -1,8 +1,9 @@
+// src/pages/client/LegalChatPage.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { cn } from '../../lib/utils';
+import { API_URL } from '../../lib/constants'; // 🟢 AMENDMENT 1: Dynamic URL Import
 import {
   Send, Loader2, Plus, MessageSquare, Trash2, Menu, X, Scale, Sparkles, BookOpen
 } from 'lucide-react';
@@ -133,13 +134,15 @@ const LegalChatPage: React.FC = () => {
     history.push({ role: 'user', parts: [{ text: textToSend }] });
 
     try {
-      // 🟢 FIX: Clean URL with proper /api/chat endpoint
-      const serverResponse = await fetch('https://lexcasus-backend.onrender.com/api/chat', {
+      // 🟢 AMENDMENT 1: Secure API Call using dynamic API_URL
+      const serverResponse = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           history: history, 
-          message: textToSend 
+          message: textToSend,
+          userId: user?.id,
+          isAdmin: user?.role === 'admin' || user?.email === 'rashemvanrondina@gmail.com'
         })
       });
 
@@ -153,7 +156,7 @@ const LegalChatPage: React.FC = () => {
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        content: data.response, // Matches the res.json({ response: ... }) in server.js
+        content: data.response,
         timestamp: new Date().toISOString(),
       };
 
@@ -162,14 +165,6 @@ const LegalChatPage: React.FC = () => {
           ? { ...s, updatedAt: Date.now(), messages: [...s.messages, aiMsg] }
           : s
       ));
-
-      // 🟢 BILLING: Increment the Chat Count in Firebase
-      if (user && user.role !== 'admin' && user.email !== 'rashemvanrondina@gmail.com') {
-        const userRef = doc(db, 'users', user.id);
-        await updateDoc(userRef, {
-          'usage.dailyChatCount': increment(1)
-        });
-      }
 
     } catch (error) {
       console.error("Chat Server Connection Error:", error);
@@ -186,7 +181,8 @@ const LegalChatPage: React.FC = () => {
         isOpen={showUpgradeModal} 
         onClose={() => setShowUpgradeModal(false)} 
         featureName="Legal AI Chat" 
-        limitText="daily limit of 10 queries" 
+        // 🟢 AMENDMENT 2: Clarified Text
+        limitText="Basic tier limit of 10 queries/day" 
       />
 
       <div className="h-[calc(100vh-8rem)] flex bg-white dark:bg-[#0A0F1D] rounded-3xl overflow-hidden border border-gray-200 dark:border-navy-800 shadow-sm relative">
