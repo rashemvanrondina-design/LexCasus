@@ -356,12 +356,16 @@ app.post('/api/grade', async (req, res) => {
 // 🟢 PHASE 4: LEGAL CHAT AI (SECURED PAYWALL)
 // ============================================================
 app.post('/api/chat', async (req, res) => {
-  // 🟢 Extract userId and isAdmin from the frontend request
   const { history, message, userId, isAdmin } = req.body; 
   const safeHistory = Array.isArray(history) ? history : [];
 
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    // 🛡️ THE FIX: Add strict System Instructions to fence in the AI
+    const model = genAI.getGenerativeModel({ 
+      model: MODEL_NAME,
+      systemInstruction: "You are Lex Casus, an elite Philippine Legal Scholar and Assistant. Your SOLE purpose is to discuss Philippine law, jurisprudence, codal provisions, and Bar Exam topics. You MUST strictly refuse to answer any questions that are not related to law or legal studies. If a user asks about general knowledge, coding, math, recipes, or casual non-legal topics, you must politely decline, remind them you are a legal AI, and steer the conversation back to the law."
+    });
+
     const chat = model.startChat({ history: safeHistory });
     const result = await chat.sendMessage(message);
     
@@ -369,9 +373,9 @@ app.post('/api/chat', async (req, res) => {
     if (userId && !isAdmin && admin.apps.length > 0) {
       try {
         const db = admin.firestore();
-        await db.collection('users').doc(userId).update({
+        await db.collection('users').doc(userId).set({
           'usage.dailyChatCount': admin.firestore.FieldValue.increment(1)
-        });
+        }, { merge: true }); // 🟢 Using .set with merge: true to prevent missing doc errors
         console.log(`💰 Billed AI Chat to User: ${userId}`);
       } catch (billingError) {
         console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
@@ -380,9 +384,7 @@ app.post('/api/chat', async (req, res) => {
 
     res.json({ response: result.response.text() }); 
   } catch (e) { 
-    // 🚨 ADD THIS CONSOLE.ERROR LINE RIGHT HERE:
     console.error("❌ CHAT AI ERROR:", e); 
-    
     res.status(500).json({ error: "LexCasus Chat is currently overloaded." }); 
   }
 });
