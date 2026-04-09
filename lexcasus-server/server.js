@@ -51,8 +51,8 @@ if (!admin.apps.length) {
 
 // 🟢 CONFIGURATION: AI & DATABASE
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-// 🟢 Note: Switching back to 1.5-flash prevents those 503 Overload Errors!
-const MODEL_NAME = "gemini-1.5-flash"; 
+// 🟢 Note: Switching back to 2.5-flash prevents those 503 Overload Errors!
+const MODEL_NAME = "gemini-2.5-flash"; 
 
 const supabase = createClient(
   process.env.SUPABASE_URL || '',
