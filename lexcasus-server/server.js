@@ -5,14 +5,13 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import admin from 'firebase-admin'; // 🟢 ADDED: Firebase Admin SDK
+import admin from 'firebase-admin';
 
 console.log("🏛️  THE CHAMBERS ARE ATTEMPTING TO OPEN...");
 
 // 🛡️ NATIVE, SIMPLIFIED CORS VIP LIST
 const app = express();
 
-// 🛡️ FINAL CORS CONFIGURATION
 const corsOptions = {
   origin: ['http://localhost:5173', 'https://lex-casus.vercel.app'],
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -22,10 +21,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// 🚨 Explicitly handle preflight for all routes using the options defined above
 app.options('*', cors(corsOptions)); 
-
 app.use(express.json());
 
 // 🟢 DIAGNOSTIC LOG: Check the Environment
@@ -33,15 +29,14 @@ console.log("🔑  Checking Credentials...");
 console.log("- Gemini Key:", process.env.GEMINI_API_KEY ? "✅ LOADED" : "❌ MISSING");
 console.log("- Supabase URL:", process.env.SUPABASE_URL ? "✅ LOADED" : "❌ MISSING");
 
-// 🟢 INITIALIZE FIREBASE ADMIN (The Master Key - FIXED FOR RENDER)
+// 🟢 INITIALIZE FIREBASE ADMIN (The Master Key)
 if (!admin.apps.length) {
   try {
-    if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+    if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PROJECT_ID) {
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          // 🟢 Crucial fix: Render escapes the \n, so we put them back to real newlines
           privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
         })
       });
@@ -56,7 +51,8 @@ if (!admin.apps.length) {
 
 // 🟢 CONFIGURATION: AI & DATABASE
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const MODEL_NAME = "gemini-2.5-flash"; 
+// 🟢 Note: Switching back to 1.5-flash prevents those 503 Overload Errors!
+const MODEL_NAME = "gemini-1.5-flash"; 
 
 const supabase = createClient(
   process.env.SUPABASE_URL || '',
@@ -192,9 +188,7 @@ app.post('/api/digest', async (req, res) => {
     }
 
     const focusInstruction = focus 
-      ? `CRITICAL DIRECTIVE: The user has requested to FOCUS STRICTLY on the issue of: "${focus}". 
-         You MUST extract the issues and rulings ONLY as they pertain to "${focus}". 
-         For the FACTS, provide a highly comprehensive narrative emphasizing the factual background that leads up to the "${focus}" issue.` 
+      ? `CRITICAL DIRECTIVE: The user has requested to FOCUS STRICTLY on the issue of: "${focus}". You MUST extract the issues and rulings ONLY as they pertain to "${focus}". For the FACTS, provide a highly comprehensive narrative emphasizing the factual background that leads up to the "${focus}" issue.` 
       : `Provide a comprehensive digest covering all major issues. For the FACTS, provide a highly detailed, chronological narrative of the events leading up to the Supreme Court. Do not over-summarize the facts.`;
 
     const prompt = `
@@ -262,14 +256,17 @@ app.post('/api/digest', async (req, res) => {
       await supabase.from('cases').insert([dbRecord]);
     }
 
-    // 🛡️ THE PAYWALL ENFORCER: Securely deduct Case Digest credits
+    // 🛡️ THE PAYWALL ENFORCER: Case Digest (Fixed dot-notation)
+    console.log(`[BILLING CHECK - DIGEST] UserID: ${userId} | IsAdmin: ${isAdmin}`);
     if (userId && !isAdmin && admin.apps.length > 0) {
       try {
         const db = admin.firestore();
-        await db.collection('users').doc(userId).update({
-          'usage.dailyCaseCount': admin.firestore.FieldValue.increment(1),
-          'usage.monthlyCaseCount': admin.firestore.FieldValue.increment(1)
-        });
+        await db.collection('users').doc(userId).set({
+          usage: {
+            dailyCaseCount: admin.firestore.FieldValue.increment(1),
+            monthlyCaseCount: admin.firestore.FieldValue.increment(1)
+          }
+        }, { merge: true });
         console.log(`💰 Billed Case Digest to User: ${userId}`);
       } catch (billingError) {
         console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
@@ -284,10 +281,9 @@ app.post('/api/digest', async (req, res) => {
 });
 
 // ============================================================
-// ⚖️ PHASE 3: GRADE SUBMITTED BAR ANSWERS (SECURED PAYWALL)
+// ⚖️ PHASE 3: GRADE SUBMITTED BAR ANSWERS
 // ============================================================
 app.post('/api/grade', async (req, res) => {
-  // 🟢 Extract userId and isAdmin from the request
   const { question, userAnswer, suggestedAnswer, userId, isAdmin } = req.body;
   
   const prompt = `
@@ -327,13 +323,16 @@ app.post('/api/grade', async (req, res) => {
     
     const result = await model.generateContent(prompt);
     
-    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    // 🛡️ THE PAYWALL ENFORCER: Grade (Fixed dot-notation)
+    console.log(`[BILLING CHECK - GRADE] UserID: ${userId} | IsAdmin: ${isAdmin}`);
     if (userId && !isAdmin && admin.apps.length > 0) {
       try {
         const db = admin.firestore();
-        await db.collection('users').doc(userId).update({
-          'usage.dailyPracticeCount': admin.firestore.FieldValue.increment(1)
-        });
+        await db.collection('users').doc(userId).set({
+          usage: {
+            dailyPracticeCount: admin.firestore.FieldValue.increment(1)
+          }
+        }, { merge: true });
         console.log(`💰 Billed AI Practice Grader to User: ${userId}`);
       } catch (billingError) {
         console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
@@ -360,7 +359,7 @@ app.post('/api/chat', async (req, res) => {
   const safeHistory = Array.isArray(history) ? history : [];
 
   try {
-    // 🛡️ THE FIX: Add strict System Instructions to fence in the AI
+    // 🛡️ STRICT LEGAL PERSONA ADDED HERE
     const model = genAI.getGenerativeModel({ 
       model: MODEL_NAME,
       systemInstruction: "You are Lex Casus, an elite Philippine Legal Scholar and Assistant. Your SOLE purpose is to discuss Philippine law, jurisprudence, codal provisions, and Bar Exam topics. You MUST strictly refuse to answer any questions that are not related to law or legal studies. If a user asks about general knowledge, coding, math, recipes, or casual non-legal topics, you must politely decline, remind them you are a legal AI, and steer the conversation back to the law."
@@ -369,13 +368,16 @@ app.post('/api/chat', async (req, res) => {
     const chat = model.startChat({ history: safeHistory });
     const result = await chat.sendMessage(message);
     
-    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    // 🛡️ THE PAYWALL ENFORCER: Chat (Fixed dot-notation)
+    console.log(`[BILLING CHECK - CHAT] UserID: ${userId} | IsAdmin: ${isAdmin}`);
     if (userId && !isAdmin && admin.apps.length > 0) {
       try {
         const db = admin.firestore();
         await db.collection('users').doc(userId).set({
-          'usage.dailyChatCount': admin.firestore.FieldValue.increment(1)
-        }, { merge: true }); // 🟢 Using .set with merge: true to prevent missing doc errors
+          usage: {
+            dailyChatCount: admin.firestore.FieldValue.increment(1)
+          }
+        }, { merge: true });
         console.log(`💰 Billed AI Chat to User: ${userId}`);
       } catch (billingError) {
         console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
@@ -390,10 +392,9 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ============================================================
-// 🟢 PHASE 5: CODAL DECONSTRUCTION (WITH SECURE BILLING)
+// 🟢 PHASE 5: CODAL DECONSTRUCTION
 // ============================================================
 app.post('/api/deconstruct', async (req, res) => {
-  // 🟢 Extract userId and isAdmin from the frontend request
   const { title, content, userId, isAdmin } = req.body;
   
   const prompt = `
@@ -410,13 +411,16 @@ app.post('/api/deconstruct', async (req, res) => {
     const model = genAI.getGenerativeModel({ model: MODEL_NAME });
     const result = await model.generateContent(prompt);
     
-    // 🛡️ THE PAYWALL ENFORCER: Securely deduct credits on the backend
+    // 🛡️ THE PAYWALL ENFORCER: Deconstruct (Fixed dot-notation)
+    console.log(`[BILLING CHECK - DECONSTRUCT] UserID: ${userId} | IsAdmin: ${isAdmin}`);
     if (userId && !isAdmin && admin.apps.length > 0) {
       try {
         const db = admin.firestore();
-        await db.collection('users').doc(userId).update({
-          'usage.aiDeconstructionCount': admin.firestore.FieldValue.increment(1)
-        });
+        await db.collection('users').doc(userId).set({
+          usage: {
+            aiDeconstructionCount: admin.firestore.FieldValue.increment(1)
+          }
+        }, { merge: true });
         console.log(`💰 Billed AI Deconstruction to User: ${userId}`);
       } catch (billingError) {
         console.error(`🚨 Billing Failed for User ${userId}:`, billingError.message);
