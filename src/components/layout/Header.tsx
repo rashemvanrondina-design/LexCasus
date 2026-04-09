@@ -4,6 +4,8 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useUIStore } from '../../store/uiStore';
 import { cn, getGreeting } from '../../lib/utils';
+// 🟢 Your import is perfect!
+import newLogo from '../assets/main-logo.png';
 import { Sun, Moon, Menu, User } from 'lucide-react';
 
 const pageTitles: Record<string, string> = {
@@ -31,7 +33,6 @@ const Header: React.FC = () => {
   return (
     <header className={cn(
       'sticky top-0 z-30 h-16 bg-white/80 dark:bg-navy-950/80 backdrop-blur-xl border-b border-gray-200 dark:border-navy-800 flex items-center justify-between px-4 sm:px-6 transition-all duration-300',
-      // This keeps the header aligned when the sidebar expands/collapses
       sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
     )}>
       <div className="flex items-center gap-3">
@@ -50,6 +51,13 @@ const Header: React.FC = () => {
         >
           <Menu className="w-5 h-5" />
         </button>
+
+        {/* 🟢 WE ADDED THE LOGO RIGHT HERE */}
+        <img 
+          src={newLogo} 
+          alt="Lex Casus" 
+          className="h-8 w-auto object-contain hidden sm:block" 
+        />
 
         <div>
           <h1 className="text-base font-semibold text-gray-900 dark:text-white">
