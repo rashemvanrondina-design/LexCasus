@@ -29,9 +29,10 @@ export const lexCasusAPI = {
     return data;
   },
 
-  // Phase 2: Generate Digest (NO PAYWALL YET, per your server.js)
-  generateDigest: async (query: string, url?: string, focus?: string) => {
-    const { data } = await apiClient.post('/digest', { query, url, focus });
+  // Phase 2: Generate Digest (NOW PAYWALL PROTECTED)
+  generateDigest: async (query: string, url?: string, focus?: string, isAdmin = false) => {
+    const payload = { query, url, focus, ...getAuthPayload(isAdmin) };
+    const { data } = await apiClient.post('/digest', payload);
     return data;
   },
 
